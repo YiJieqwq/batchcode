@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+sessions/
+logs/
+locks/
+running/
+sub_workspace/
+config.json
+model/*.txt
+websearch/*.txt
+!model/deepseek-flash.txt
+!websearch/tavily.txt
+# Tracked defaults must NEVER contain real keys. Release tooling checks them.
+dist/

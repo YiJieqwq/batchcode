@@ -1,0 +1,26 @@
+{
+  "default_model": "deepseek-flash",
+  "read_roots": [
+    "../inbox",
+    "./sub_workspace"
+  ],
+  "deny_read_paths": [],
+  "task_timeout_seconds": 240,
+  "request_timeout_seconds": 90,
+  "max_model_calls": 16,
+  "max_tool_calls": 40,
+  "max_output_tokens": 4096,
+  "max_context_chars": 180000,
+  "max_read_bytes": 65536,
+  "max_tool_result_chars": 24000,
+  "max_write_bytes": 262144,
+  "max_http_response_bytes": 4194304,
+  "max_directory_entries": 200,
+  "http_retries": 1,
+  "extract_depth": "basic",
+  "fetch_timeout_seconds": 30,
+  "allow_http_endpoints": false,
+  "websearch": null,
+  "granularity": "coarse",
+  "parallel": 2
+}

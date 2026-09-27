@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+BASE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if [ ! -x "$BASE/.venv/bin/python" ]; then
+  printf '%s\n' 'batchcode/status: failed, code NOT_INSTALLED'
+  printf '%s\n' 'Run bash install.sh in the installation directory.' >&2
+  exit 2
+fi
+export PYTHONDONTWRITEBYTECODE=1
+exec "$BASE/.venv/bin/python" "$BASE/src/cli.py" "$@"

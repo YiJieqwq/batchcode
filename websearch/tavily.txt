@@ -1,0 +1,11 @@
+{
+  "url": "https://api.tavily.com/search",
+  "extract_url": "https://api.tavily.com/extract",
+  "api_key": "",
+  "search_depth": "advanced",
+  "max_results": 10,
+  "topic": "general",
+  "include_answer": true,
+  "include_raw_content": false,
+  "include_images": false
+}

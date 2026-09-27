@@ -1,0 +1,29 @@
+name: tests
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.10', '3.12', '3.14']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: bash install.sh --local
+      - run: python3 -m unittest discover -s tests -v
+      - run: python3 scripts/package.py
+      - name: Fresh archive install
+        run: |
+          mkdir -p /tmp/batchcode-release-check
+          unzip -q dist/batchcode-v0.2.0.zip -d /tmp/batchcode-release-check
+          bash /tmp/batchcode-release-check/batchcode/install.sh --local
+          /tmp/batchcode-release-check/batchcode/batchcode op self-check
+      - uses: actions/upload-artifact@v4
+        if: matrix.python == '3.14'
+        with:
+          name: batchcode-v0.2.0
+          path: dist/*
