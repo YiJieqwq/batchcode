@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.2 — 2026-09-28
+
+- Make submit_answer the normal final delivery requirement in both summary and full, including completed, abandoned and no-task replies. Still allows revisions/closing, no invented file/search work.
+- Full stdout now includes the final /answer as well as visible /evt messages; same last-valid-submission and warned fallback behavior as summary. Failed runs remain failed even if they have an answer.
+- Remove the answer-length configuration/CLI target, fixed numeric prompt guidance and feedback target. Follow user-provided length in task content; otherwise answer concisely. Each submit still returns its actual character count; no answer truncation.
+- Install-time cleanup backs up and removes the retired field from active model/session configs and pending config transactions. Keys, other settings and raw history stay unchanged; no runtime alias remains.
+- Same ctx schema and strict-reference/name policies as 0.3.1. No unrelated GC, human-renderer, help or automatic-name redesign.
+- 168 offline/mock regressions passed locally; revised v0.3.2 prompt requires live validation.
+
+
 ## 0.3.1 — 2026-09-28
 
 - Explicit task/session references are strict: unknown names/IDs fail, never silently create; session set conf now also requires an existing session. Omitted task reference still creates.

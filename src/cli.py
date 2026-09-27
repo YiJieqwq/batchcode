@@ -395,13 +395,12 @@ def spool_result(r,sid,name):
         if r['answer']=='full':
             for e in fresh:
                 if e['kind']=='assistant_content' and isinstance(e['value'],str) and e['value']:print(f'{name}/evt/{e["evt_id"]}: {e["value"]}',file=out)
-        else:
-            answer=None
-            if r.get('answer_evt') in ev:
-                try:answer=c.decode(ev[r['answer_evt']]['value']['function']['arguments'])['answer']
-                except (ValueError,KeyError,TypeError):pass
-            elif r.get('fallback_evt') in ev:answer=ev[r['fallback_evt']]['value']
-            if answer is not None:print(f'{name}/answer: {answer}',file=out)
+        answer=None
+        if r.get('answer_evt') in ev:
+            try:answer=c.decode(ev[r['answer_evt']]['value']['function']['arguments'])['answer']
+            except (ValueError,KeyError,TypeError):pass
+        elif r.get('fallback_evt') in ev:answer=ev[r['fallback_evt']]['value']
+        if answer is not None:print(f'{name}/answer: {answer}',file=out)
         if r['granularity']=='fine':
             for e in fresh:
                 if e['kind']=='tool_call' and isinstance(e['value'],dict):

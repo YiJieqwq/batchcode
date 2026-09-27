@@ -54,6 +54,7 @@ mkdir -p startup locks
 if [[ ! -e startup/selection.json ]]; then cp startup/selection.default.json startup/selection.json; fi
 chmod 700 batchcode
 find model websearch -maxdepth 1 -type f \( -name '*.txt' \) -exec chmod 600 {} +
+python3 "$BASE/src/config_upgrade.py"
 ./batchcode self-check
 
 # --local skips global registration for CI/embedded deployments only.

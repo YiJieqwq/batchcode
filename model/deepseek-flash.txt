@@ -9,7 +9,6 @@
   "top_p": 1,
   "answer": "summary",
   "granularity": "coarse",
-  "summary_chars": 200,
   "parallel": 2,
   "stream": true,
   "task_timeout_seconds": 1800,

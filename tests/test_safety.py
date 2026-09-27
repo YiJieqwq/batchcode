@@ -137,7 +137,7 @@ class SafetyTests(unittest.TestCase):
         self.assertEqual(before,(self.root/'session_index.json').read_bytes())
     def test_no_summary_character_target_still_requires_submit(self):
         import runner
-        cfg={**self.cfg,'summary_chars':0,'answer':'summary'}
+        cfg={**self.cfg,'answer':'summary'}
         text=runner.system_prompt(cfg,[])
-        self.assertIn('以上情形至少提交一次',text);self.assertIn('不设建议字符数',text)
-        self.assertNotIn('0 个字符以内',text)
+        self.assertIn('以上情形至少提交一次',text);self.assertIn('未提出时自行简短回答',text)
+        self.assertNotIn('200',text)

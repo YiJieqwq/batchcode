@@ -49,6 +49,9 @@ class Handler(BaseHTTPRequestHandler):
             if n==0:
                 text='read';calls=[call('read_file',{'path':'unused'})];calls[0]['function']['arguments']='{"path":'
             else:text='ARGUMENT_ERROR_HANDLED'
+        elif task in ('onlysubmit','unicode_submit'):
+            text=''
+            if n==0:calls=[call('submit_answer',{'answer':'ONLY_SUBMITTED_BODY' if task=='onlysubmit' else '好，A !\n🙂'})]
         elif task=='loop':text='loop';calls=[call('list_directory',{'path':str(self.server.root/'input')})]
         elif task=='history':text='HISTORY_OK' if any(m.get('content')=='GOODBYE' for m in msgs) else 'NO_HISTORY'
         elif task=='secret':text='sk-example tvly-example'

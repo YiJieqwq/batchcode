@@ -41,3 +41,12 @@ The user supplied an independent-container v0.3.0 report (119 offline tests, rea
 `session del ctx` leaving a listed, runnable session is intentional, not a defect; tested by clearing history then submitting a new task under the same ID. Only explicit `session del all` removes the identity.
 
 Before release: run the CI matrix and clean ZIP install/uninstall/reinstall checks on this exact revision. No actual provider credentials or paid calls are used in this suite.
+
+
+## v0.3.2 — 2026-09-28
+
+168 offline/mock tests passed locally (same proot/Python 3.14 environment). Additional coverage includes full-mode final answer delivery with visible closing, revisions/invalid re-submits, no-content submissions, failure after submission, warned fallback and no stale-history reuse. Shared prompt assertions require submission in BOTH modes for no-task/greeting cases. Tool feedback is checked for actual per-submission character count including Unicode/punctuation/space/newline and for absence of numeric target fields.
+
+Config tests verify the removed answer-length option is no longer accepted by task/gconf/session schemas or shown in help/defaults. Installation cleanup is idempotent, backs up exact originals, preserves keys/other settings/ctx/info, handles pending transactions without resurrecting the retired setting, and refuses unsafe symlinks or invalid JSON before mutation. Fresh ZIP install/uninstall/reinstall validation is separate from mocks. Follow the actual GitHub Actions result for this revision before treating all Python versions as verified.
+
+A user-supplied independent v0.3.1 brief reports successful real DeepSeek/Tavily use and 149 offline tests. It observed greeting submissions, strict names and full-mode submissions whose bodies were not displayed—consistent with the output defect fixed here. This is external evidence for v0.3.1, not a guarantee that every v0.3.2 model call follows the new shared prompt. No v0.3.2 real API calls are performed by the offline suite; no new OpenAI live certification. The private report is not committed or packaged.

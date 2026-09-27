@@ -2,14 +2,14 @@
 
 **一次调用，多个代理。** 面向终端用户和 AI agent 的轻量任务 CLI：会话分支与并发、可编辑上下文、provider 请求编译、明确的最终答案提交。
 
-**当前版本：v0.3.1**（兼容 v0.3.0 会话存储；收紧会话引用语义，不兼容 0.2.x CLI／会话格式）。Python 3.10+ 标准库，无 pip 第三方依赖；支持 Debian/Ubuntu（含 proot），不支持原生 Termux 或 Windows。
+**当前版本：v0.3.2**（沿用 v0.3.x 会话存储；安装时清理废弃配置，不兼容 0.2.x CLI／会话格式）。Python 3.10+ 标准库，无 pip 第三方依赖；支持 Debian/Ubuntu（含 proot），不支持原生 Termux 或 Windows。
 
 ## 安装
 
 从 [Releases](https://github.com/YiJieqwq/batchcode/releases) 下载 ZIP：
 
 ```bash
-unzip batchcode-v0.3.1.zip
+unzip batchcode-v0.3.2.zip
 cd batchcode
 bash install.sh
 ```
@@ -25,7 +25,13 @@ websearch/tavily.txt
 
 搜索没 key 不妨碍模型运行：缺失搜索工具不会注入 schema，但子代理会收到动态提示 `web_search is temporarily unavailable`。模型必须在**合并后的有效配置**中有 key；绝不自动换模型/服务商。这里只检查本地调用条件，非空 key 不保证远端鉴权成功。
 
-> 不要把 ZIP 覆盖解压到已填密钥的目录。安装脚本不会覆盖运行配置，但解压器可能覆盖同名 `.txt`。本版本不迁移 0.2.x 会话、不删除旧数据。请在新目录安装；默认 profile 是公开空 key 样板，填 key 后不要提交到 Git。
+> 不要把 ZIP 覆盖解压到已填密钥的目录。安装脚本保留密钥和自定义设置，但解压器可能覆盖同名 `.txt`。本版本不迁移 0.2.x 会话、不删除旧数据。请在新目录安装；默认 profile 是公开空 key 样板，填 key 后不要提交到 Git。
+
+### 从 v0.3.0 / v0.3.1 更新
+
+不需要转换 ctx。准备好新版代码、保留或迁入自己的模型与会话配置后，运行 `bash install.sh`：安装器在持有生命周期锁时，**先备份再清除已废弃的答案长度配置字段**，不动密钥、其他字段、原始 ctx 或历史审计。备份位于私有 `state/config-backup-*/`，含原配置内容，勿上传；重复安装不会反复改写已清理的文件。若迁入旧配置发生在安装后，再运行一次安装脚本。
+
+这是删除旧字段，不是继续提供一个兼容参数；CLI、当前配置视图、请求提示词和新提交反馈中不再提供答案长度目标。已有历史工具反馈保持原样，不为了升级篡改旧对话。
 
 ## 一次调用完成任务
 
@@ -72,11 +78,15 @@ batchcode task s_0123456789abcdef0123456789abcdef --name=新名称 --content="�
 batchcode task 调研 --answer=summary --granularity=fine --content="查阅材料"
 ```
 
-- **`--answer=summary`（默认）**：子代理通过 `submit_answer` 提交最终答案。任务完成、已无法完成且无后续操作，或没有任务且无后续操作时，**都要求至少提交一次，包括问候／测试**；不得为了提交而执行无关文件／搜索操作。允许反复修订，不截断、不限提交次数或累计提交长度；每次回传程序计算的字符数。最后一次有效提交才用于交付，提交不会结束循环，后续收尾仍保存 ctx。
-- **`--answer=full`**：stdout 保留本次全部可见 `assistant_content`。不输出 reasoning 或工具反馈正文；可用显式 ctx 查询查看原始事件。
+**`submit_answer` 在两种回答模式里都常驻，交付要求相同**：任务完成、已无法完成且无后续操作，或没有任务且无后续操作时，至少提交一次，包括问候／测试；不得为提交而执行无关文件／搜索操作。允许反复修订，最终以本次运行最后一次有效提交为准，提交后继续正常收尾。
+
+- **`--answer=summary`（默认）**：stdout 只显示最终 `/answer` 和程序状态／成果，不回灌中间可见发言。
+- **`--answer=full`**：stdout 显示本次全部可见 `assistant_content`，**然后同样显示最终 `/answer`**。它不是“只展示过程却藏起已提交的答案”。不输出 reasoning 或工具反馈正文；显式 ctx 查询可以查看原始事件。
+- **答案长度在任务正文里交代**：例如 `--content="请用三句话总结……"`。用户没提字数或篇幅时，让子代理自行简短回答，保留必要信息。程序没有额外的答案长度目标参数，不硬截断、不限制累计提交长度。
+- 每次提交反馈包含实际 `chars`（Python 字符计数，含标点、英文、空格与换行），**没有目标长度字段**。由模型结合用户正文要求决定是否修订；程序不解析用户正文来制造另一条隐藏上限。
 - **`--granularity=coarse`（默认）**：stderr 不显示工具调用摘要，提示 `Tool call records are hidden`。
 - **`--granularity=fine`**：stderr 显示调用摘要（submit 参数正文仍隐藏）；工具反馈正文不显示。
-- 本轮没有有效提交，兜底**本轮最后一条完整 content**，stderr 提示 `NO_SUBMISSION` 和本轮 evt 起止 ID。这是模型漏交时的异常兜底，不再把问候设计为常规兜底路径；不靠程序语义分类判失败。提示词不保证模型永不漏交，因此 warning 保留。历史/fork 继承的 submit 不计本轮。
+- 本轮没有有效提交，两种模式都用 `/answer` 标记兜底的**本轮最后一条完整 content**（full 中也保留其原 `/evt`），stderr 提示 `NO_SUBMISSION` 和本轮 evt 起止 ID。这是模型漏交时的异常兜底，不再把问候设计为常规兜底路径；不靠程序语义分类判失败。提示词不保证模型永不漏交，因此 warning 保留。历史/fork 继承的 submit 不计本轮。
 - 错误和 warning 始终输出。已有答案不能掩盖超时/失败；状态和退出码照实返回。
 
 示例 stdout：
@@ -93,6 +103,16 @@ batchcode task 调研 --answer=summary --granularity=fine --content="查阅材�
 核查/input: msg_id=1, evt_id=1
 核查/answer: 直接回复……
 ```
+
+`full` 还会在 `/answer` 前保留过程与收尾，例如：
+
+```text
+调研/evt/20: 我先读取指定材料。
+调研/evt/26: 已完成核对。
+调研/answer: 最终提交的结论……
+```
+
+即使最后一条可见发言只是“已完成”，`/answer` 仍来自最后一次有效提交，而不是把收尾当答案。提交之后发生超时／失败时，已有答案仍可返回，但状态不会伪装成功。
 
 示例 stderr：
 

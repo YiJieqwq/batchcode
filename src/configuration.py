@@ -9,7 +9,7 @@ import common as c
 DEFAULTS={
  'url':'https://api.deepseek.com/v1/chat/completions','model':'deepseek-flash','api_key':'',
  'provider':'auto','thinking':'enabled','reasoning_effort':'auto','temperature':1,'top_p':1,
- 'answer':'summary','granularity':'coarse','summary_chars':200,'parallel':2,'stream':True,
+ 'answer':'summary','granularity':'coarse','parallel':2,'stream':True,
  'task_timeout_seconds':1800,'request_timeout_seconds':90,'http_retries':1,
  'max_model_calls':0,'max_tool_calls':0,'max_context_chars':0,'max_output_tokens':0,
  'max_read_bytes':65536,'max_tool_result_chars':24000,'max_write_bytes':262144,
@@ -22,7 +22,7 @@ OPTIONAL={'websearch','presence_penalty','frequency_penalty'}
 FIELDS=set(DEFAULTS)|OPTIONAL
 SESSION_FIELDS=FIELDS|{'modelconf'}
 API_PARAMS=('temperature','top_p','presence_penalty','frequency_penalty','reasoning_effort','thinking')
-ZERO_FIELDS={'max_model_calls','max_tool_calls','max_context_chars','max_output_tokens','http_retries','summary_chars'}
+ZERO_FIELDS={'max_model_calls','max_tool_calls','max_context_chars','max_output_tokens','http_retries'}
 ENUMS={'answer':('summary','full'),'granularity':('coarse','fine'),'thinking':('enabled','disabled','auto'),
        'extract_depth':('basic','advanced'),'provider':('auto','deepseek','openai')}
 

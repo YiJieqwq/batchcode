@@ -20,7 +20,6 @@ Unset removes a stored override so it inherits. Missing optional field = inherit
 | temperature/top_p | 1/1 | optional; ranges 0–2 / 0–1 |
 | presence_penalty/frequency_penalty | absent | optional -2–2; DS may ignore/not support |
 | answer/granularity | summary/coarse | independent stdout policy / stderr trace |
-| summary_chars | 200 | suggestion and submitted feedback only, 0=no length suggestion |
 | stream | true | SSE API response processing (terminal still buffered) |
 | parallel | 2 | per invocation pool limit, 1–32, not per-session |
 | task_timeout_seconds | 1800 | task-level deadline; external exec deadline may be earlier |
@@ -41,7 +40,7 @@ Unset removes a stored override so it inherits. Missing optional field = inherit
 
 parallel's default is taken from the batch's first explicit modelconf if provided, otherwise startup's default modelconf. A missing batch-default file falls back to scheduling size 2 only; task model resolution still errors rather than routes to another model. Per-task model choices cannot create separate worker pools.
 
-`max_tool_calls` counts ordinary tool execution, not submit_answer; successful submissions have no separate number/token limit. No imposed input budget piggybacked on a 0 context budget. Large stdin is read as text; RAM still finite, so use approved files and artifacts rather than giant command arguments. No local quota means no guarantee of unlimited provider context/output or memory.
+`max_tool_calls` counts ordinary tool execution, not submit_answer; successful submissions have no separate number/token limit. The submit tool is present and required for normal delivery in summary and full. Answer length follows the task text; if unspecified, replies should be concise. Feedback reports actual characters only, no target field. No imposed input budget piggybacked on a 0 context budget. Large stdin is read as text; RAM still finite, so use approved files and artifacts rather than giant command arguments. No local quota means no guarantee of unlimited provider context/output or memory.
 
 The default profile uses actual explicit values; editing DEFAULTS in code is not configuration management. Full gconf may intentionally fix its own defaults. task scalar overrides are persisted even if final validation/API fails; destructive rerun/edit+rerun waits for valid target/config/compile preflight before cutting history.
 
@@ -71,3 +70,10 @@ Lifecycle locks serialize installation/uninstallation against commands; installe
 ## v0.3.1 naming is not configuration
 
 `task --name=NEW --content=...` creates; `task REF --name=NEW --content=...` renames an existing ID after successful preflight. `name` does not enter gconf/sconf/tmpconf or info.json. Batch objects distinguish `session` (existing ref) and `name` (desired label). All position/name/ID lookups are strict; only omitted task refs or explicit session add/fork create. The current display name is looked up from the index for output, even if the caller supplied an ID. Storage remains schema 1; v0.3.0 data needs no conversion.
+
+
+## v0.3.2 retired answer-length setting
+
+There is no supported configuration field or CLI flag for answer-length guidance. Defaults, per-run prompts and submission feedback contain no numeric answer target. Ask for length in the task's content; actual per-submission `chars` is still computed for the model.
+
+Installation performs a narrowly scoped, idempotent cleanup of the retired top-level field in model profiles and session configs (also their pending config transaction), preserving every other value. It reads/plans changes before writing; stores private verbatim backups of every changed file in state/config-backup-* before the first atomic replacement. Does not alter ctx, info or stored past tool feedback. On permission/filesystem failure, cleanup may be partial; fix the cause and rerun install, with backups available. Do not send these backups to GitHub. This cleanup is not a runtime compatibility alias, a general 0.2 migration or permission to overwrite configured profiles.

@@ -59,8 +59,10 @@ class ProjectTests(unittest.TestCase):
         self.assertEqual(r.returncode,0,r.stderr)
         for text in ['VISIBLE_PROGRESS','UPPER_HALF','LOWER_HALF','GOODBYE']:self.assertIn(text,r.stdout)
         self.assertIn('Tool call records are hidden',r.stderr)
+        self.assertIn('one/answer: FINAL_SUBMISSION',r.stdout)
+        self.assertLess(r.stdout.index('GOODBYE'),r.stdout.index('one/answer:'))
     def test_03_revisions_not_truncated(self):
-        r=self.cli('task','--name=one','--summary-chars=3','--content=revise')
+        r=self.cli('task','--name=one','--content=revise')
         self.assertEqual(r.returncode,0,r.stderr);self.assertIn('长'*800,r.stdout);self.assertNotIn('FIRST',r.stdout)
         run=json.loads(next((self.file('one','runs')).glob('*.json')).read_text());self.assertEqual(run['submits'],2)
     def test_04_invalid_revision_keeps_valid(self):
@@ -427,19 +429,19 @@ class ProjectTests(unittest.TestCase):
         r=self.cli('task','one','--content=hello');self.assertEqual(r.returncode,0,r.stderr);self.assertEqual(self.sid('one'),sid)
 
     def test_80_summary_instructions_include_no_task_submission(self):
-        self.cli('task','--name=one','--content=hello','--summary-chars=211')
+        self.cli('task','--name=one','--content=hello')
         system=self.server.requests[-1][1]['messages'][0]['content']
-        for phrase in ('没有任务且无后续操作时','以上情形至少提交一次','约 211 个字符以内','本次提交的字符数','最后一次有效提交','可超出的软目标','不要因此扫描目录'):
+        for phrase in ('没有任务且无后续操作时','以上情形至少提交一次','用户正文提出字数或篇幅要求','未提出时自行简短回答','本次提交的字符数','最后一次有效提交','不要因此扫描目录'):
             self.assertIn(phrase,system)
         self.assertNotIn('有实际委派任务时',system)
         # Actual-model compliance is NOT tested here; mock intentionally omits submit to exercise fallback.
         self.assertIn('Hello',self.cli('task','one','--content=hello').stdout)
 
-    def test_81_full_keeps_direct_greeting_option(self):
+    def test_81_full_also_requires_submission(self):
         self.cli('task','--name=one','--answer=full','--content=hello')
         system=self.server.requests[-1][1]['messages'][0]['content']
-        self.assertIn('full 模式下',system);self.assertIn('问候、测试可直接简短回答',system)
-        self.assertNotIn('以上情形至少提交一次',system)
+        self.assertIn('full 模式下',system);self.assertIn('问候或测试也通过 submit_answer',system)
+        self.assertIn('以上情形至少提交一次',system)
 
     def test_82_missing_file_reason_reaches_model_and_parent(self):
         r=self.cli('task','--name=one','--content=missingfile')
@@ -470,3 +472,94 @@ class ProjectTests(unittest.TestCase):
             fcntl.flock(f,fcntl.LOCK_EX|fcntl.LOCK_NB)
             r=self.cli('task',sid,'--name=new','--content=hello');self.assertEqual(r.returncode,3,r.stderr)
         self.assertEqual(self.sid('old'),sid);self.assertNotIn('new',json.loads((self.root/'session_index.json').read_text())['names'])
+
+    def test_86_full_last_submission_with_revisions(self):
+        r=self.cli('task','--name=one','--answer=full','--granularity=fine','--content=revise')
+        self.assertEqual(r.returncode,0,r.stderr)
+        self.assertIn('STEP0',r.stdout);self.assertIn('STEP1',r.stdout);self.assertIn('CLOSING',r.stdout)
+        self.assertIn('one/answer: REVISED '+('长'*800),r.stdout)
+        self.assertEqual(r.stdout.count('one/answer:'),1);self.assertNotIn('FIRST',r.stdout)
+        self.assertNotIn('REVISED',r.stderr);self.assertNotIn('长'*800,r.stderr)
+
+    def test_87_full_greeting_submits_and_closes(self):
+        self.server.submit_greeting=True
+        r=self.cli('task','--name=one','--answer=full','--content=hello')
+        self.assertEqual(r.returncode,0,r.stderr);self.assertIn('submitted=true',r.stdout)
+        self.assertIn('CLOSING',r.stdout);self.assertIn('one/answer: GREETING_SUBMITTED',r.stdout)
+        self.assertNotIn('NO_SUBMISSION',r.stderr)
+        calls=[e['value']['function']['name'] for e in self.ctx('one')['events'] if e['kind']=='tool_call' and isinstance(e['value'],dict)]
+        self.assertEqual(calls,['submit_answer'])
+
+    def test_88_full_missing_submission_still_warns_and_marks_answer(self):
+        r=self.cli('task','--name=one','--answer=full','--content=hello')
+        self.assertEqual(r.returncode,0,r.stderr);self.assertIn('NO_SUBMISSION',r.stderr)
+        self.assertIn('submitted=false',r.stdout);self.assertIn('one/answer: Hello',r.stdout)
+        self.assertTrue(any('/evt/'in line and 'Hello'in line for line in r.stdout.splitlines()))
+
+    def test_89_full_failure_after_submit_not_success(self):
+        r=self.cli('task','--name=one','--answer=full','--content=failafter')
+        self.assertNotEqual(r.returncode,0);self.assertIn('status: failed',r.stdout)
+        self.assertIn('one/answer: BEFORE_ERROR',r.stdout);self.assertIn('API_HTTP_ERROR',r.stderr)
+
+    def test_90_full_invalid_resubmit_keeps_last_valid(self):
+        r=self.cli('task','--name=one','--answer=full','--content=invalid_submit')
+        self.assertEqual(r.returncode,0,r.stderr);self.assertIn('one/answer: VALID',r.stdout)
+        self.assertEqual(r.stdout.count('one/answer:'),1);self.assertIn('TOOL_FAILED',r.stderr)
+
+    def test_91_full_submission_without_visible_content(self):
+        r=self.cli('task','--name=one','--answer=full','--content=onlysubmit')
+        self.assertEqual(r.returncode,0,r.stderr);self.assertIn('one/answer: ONLY_SUBMITTED_BODY',r.stdout)
+        self.assertNotIn('one/evt/',r.stdout);self.assertIn('submitted=true',r.stdout)
+
+    def test_92_no_length_setting_in_help_profiles_or_config(self):
+        for command in [('task','--help'),('session','set','conf','--help'),('gconf','set','--help'),('gconf','get','deepseek-flash')]:
+            r=self.cli(*command);self.assertEqual(r.returncode,0,r.stderr)
+            self.assertNotIn('summary_chars',r.stdout);self.assertNotIn('summary-chars',r.stdout)
+        for args in [('task','--summary-chars=1','--content=hello'),('gconf','set','deepseek-flash','--summary_chars=1')]:
+            r=self.cli(*args);self.assertEqual(r.returncode,2)
+        r=self.cli('task','--task={"name":"one","content":"hello","summary_chars":10}')
+        self.assertEqual(r.returncode,2);self.assertFalse(self.server.requests)
+
+    def test_93_feedback_actual_characters_without_length_target(self):
+        r=self.cli('task','--name=one','--answer=full','--content=unicode_submit')
+        self.assertEqual(r.returncode,0,r.stderr)
+        values=[json.loads(e['value']['content']) for e in self.ctx('one')['events'] if e['kind']=='tool']
+        self.assertEqual(values[0]['chars'],len('好，A !\n🙂'))
+        self.assertEqual(set(values[0]),{'submitted','chars','note'})
+        self.assertNotIn('target',values[0]['note'].lower())
+        cfg=json.loads(self.file('one','config.json').read_text());self.assertNotIn('summary_chars',cfg)
+        self.assertNotIn('summary_chars',self.info('one')['last_effective']['values'])
+
+    def test_94_same_submission_policy_across_modes(self):
+        for mode in ('summary','full'):
+            r=self.cli('task','--name='+mode,'--answer='+mode,'--content=hello')
+            self.assertEqual(r.returncode,0,r.stderr)
+            body=self.server.requests[-1][1];system=body['messages'][0]['content']
+            self.assertIn('无论 summary 还是 full，以上情形至少提交一次',system)
+            self.assertIn('按用户要求组织答案',system);self.assertIn('未提出时自行简短回答',system)
+            for retired in ('summary_chars','target_chars','约 200','可超出的软目标'):self.assertNotIn(retired,system)
+            fn=next(x['function'] for x in body['tools'] if x['function']['name']=='submit_answer')
+            self.assertIn('所有回答模式',fn['description'])
+            self.assertEqual(fn['parameters']['required'],['answer'])
+
+    def test_95_full_does_not_reuse_previous_submission(self):
+        self.cli('task','--name=one','--answer=full','--content=readwrite')
+        r=self.cli('task','one','--content=hello')
+        self.assertEqual(r.returncode,0,r.stderr);self.assertIn('NO_SUBMISSION',r.stderr)
+        self.assertIn('one/answer: Hello',r.stdout);self.assertNotIn('FINAL_SUBMISSION',r.stdout)
+
+    def test_96_install_cleans_legacy_config_without_changing_context(self):
+        self.cli('task','--name=one','--content=hello')
+        self.cfg['summary_chars']=123;self.savecfg()
+        cfg=json.loads(self.file('one','config.json').read_text());cfg.update(summary_chars=456,temperature=.4)
+        self.file('one','config.json').write_text(json.dumps(cfg))
+        oldctx=self.file('one','ctx.json').read_bytes();oldinfo=self.file('one','info.json').read_bytes()
+        r=subprocess.run(['bash',str(self.root/'install.sh'),'--local'],capture_output=True,text=True,timeout=30)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertNotIn('summary_chars',json.loads((self.root/'model/deepseek-flash.txt').read_text()))
+        self.assertEqual(json.loads((self.root/'model/deepseek-flash.txt').read_text())['api_key'],'mock-key')
+        self.assertEqual(json.loads(self.file('one','config.json').read_text()),{'temperature':.4})
+        self.assertEqual(self.file('one','ctx.json').read_bytes(),oldctx)
+        self.assertEqual(self.file('one','info.json').read_bytes(),oldinfo)
+        self.assertNotIn('mock-key',r.stdout+r.stderr)
+        r=self.cli('task','one','--answer=full','--content=hello');self.assertEqual(r.returncode,0,r.stderr)
