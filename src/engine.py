@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Subagent 0.1.0 — dependency-free, synchronous agent CLI."""
+"""Batchcode 0.2.0 — dependency-free, synchronous agent CLI."""
 import argparse
 import contextlib
 import datetime as dt
@@ -160,7 +160,7 @@ class HTTP:
     def post(self, url, key, body):
         request = urllib.request.Request(url, dumps(body).encode(), {
             'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key,
-            'User-Agent': 'subagent/' + VERSION}, method='POST')
+            'User-Agent': 'batchcode/' + VERSION}, method='POST')
         for attempt in range(self.cfg['http_retries'] + 1):
             try:
                 with self.opener.open(request, timeout=self.cfg['request_timeout_seconds']) as response:
