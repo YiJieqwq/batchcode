@@ -19,11 +19,11 @@ jobs:
       - name: Fresh archive install
         run: |
           mkdir -p /tmp/batchcode-release-check
-          unzip -q dist/batchcode-v0.2.0.zip -d /tmp/batchcode-release-check
+          unzip -q dist/batchcode-v0.2.1.zip -d /tmp/batchcode-release-check
           bash /tmp/batchcode-release-check/batchcode/install.sh --local
           /tmp/batchcode-release-check/batchcode/batchcode op self-check
       - uses: actions/upload-artifact@v4
         if: matrix.python == '3.14'
         with:
-          name: batchcode-v0.2.0
+          name: batchcode-v0.2.1
           path: dist/*

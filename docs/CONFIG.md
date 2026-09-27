@@ -30,7 +30,7 @@ Task timeout is best effort, not a strict wall-clock bound: process startup, cle
 
 ## Providers
 
-Model JSON requires `url`, `model`, `api_key`; optional `extra_body` adds provider parameters. URLs are full Chat Completions endpoints; no automatic suffix guessing. JSON duplicate keys are rejected. DeepSeek profile disables thinking by default. If enabled, reasoning fields are persisted/replayed as required by that provider but never terminal-printed. Changing config names strips provider reasoning fields; changing the contents of an existing profile is an administrator operation, not tracked as a model migration.
+Model JSON requires `url`, `model`, `api_key`; optional `extra_body` adds provider parameters. URLs are full Chat Completions endpoints; no automatic suffix guessing. JSON duplicate keys are rejected. DeepSeek profile enables thinking by default with effort=auto (omit effort field). When thinking is enabled, reasoning fields are persisted/replayed as required by that provider but never terminal-printed. Changing config names strips provider reasoning fields; changing the contents of an existing profile is an administrator operation, not tracked as a model migration.
 
 OpenAI profile example (requires API account access to the chosen model; not ChatGPT web subscription):
 

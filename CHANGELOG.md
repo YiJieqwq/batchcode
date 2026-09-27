@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1 — 2026-09-27
+
+- Add explicit read-only DNS doctor; no automatic repairs or resolver changes.
+- Add optional layered sampling/thinking parameters and provider-default auto mapping.
+- DS default enables thinking, effort auto, temperature/top_p 1.
+- Release ZIP no longer includes runtime config.json; installer creates it only if missing. Profile files can still be overwritten by unsafe overlay extraction.
+- External v0.2.0 report confirms DeepSeek/Tavily live functionality; DNS skewed latency measurements.
+
 ## 0.2.0 — 2026-09-27
 
 - Rename subagent to batchcode; PATH-registered executable, `task` / `op` command tree.

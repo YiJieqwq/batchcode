@@ -29,3 +29,10 @@ python3 -m unittest discover -s tests -v
 ```
 
 Mock credentials are fixed fake strings. No live test in CI; never add API secrets to fixtures.
+
+## v0.2.1 — 2026-09-27
+
+31 offline/mock tests passed on current Python 3.14 proot, including bounded DNS-probe timeout, DNS summary, profile host-only selection without keys, parameter validation/auto omission and layered request-body overrides.
+Explicit real DNS diagnostic (2 samples/host) observed DeepSeek 5.9481/5.2657 seconds and Tavily 5.4713/5.3203 seconds; warning exit 1 as designed, no resolver changes or paid API calls. This establishes slow system name resolution here, not the precise underlying network cause.
+No v0.2.1 live model API integration. Enabling DS thinking changes runtime behavior relative to the previously live-tested non-thinking profile. Release fresh install verified separately.
+The user-supplied v0.2.0 external report describes 24 offline tests plus successful real DeepSeek/Tavily scenarios (not OpenAI); report scenario-count headings are inconsistent, so no exact live-test count is asserted here.

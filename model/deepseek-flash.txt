@@ -2,7 +2,8 @@
   "url": "https://api.deepseek.com/v1/chat/completions",
   "model": "deepseek-flash",
   "api_key": "",
-  "extra_body": {
-    "thinking": {"type": "disabled"}
-  }
+  "thinking": "enabled",
+  "reasoning_effort": "auto",
+  "temperature": 1,
+  "top_p": 1
 }

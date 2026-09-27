@@ -205,6 +205,21 @@ class Tests(unittest.TestCase):
     def test_invalid_global_config(self):
         self.cfg['unknown']=True;self.savecfg()
         self.assertIn('INVALID_CONFIG',self.cli('task','--content=test').stdout)
+    def test_sampling_hierarchy_payload(self):
+        self.cli('op','config','g','--temperature=0.8','--reasoning-effort=auto')
+        self.cli('op','config','s','--session=sample','--temperature=0.6','--top-p=0.9')
+        r=self.cli('task','--session=sample','--temperature=0.4','--content=test')
+        self.assertEqual(r.returncode,0,r.stderr)
+        body=self.server.requests[-1][1]
+        self.assertEqual(body['temperature'],.4);self.assertEqual(body['top_p'],.9)
+        self.assertNotIn('reasoning_effort',body)
+        self.cli('op','config','s','--session=sample','--unset=temperature')
+        self.assertNotIn('temperature',self.obj('sample')['overrides'])
+        self.assertEqual(self.cli('task','--temperature=nan','--content=test').returncode,2)
+    def test_batch_sampling_override(self):
+        r=self.cli('task','--temperature=0.7','--task={"session":"sample","content":"test","temperature":0.2,"top_p":0.8}')
+        self.assertEqual(r.returncode,0,r.stderr)
+        self.assertEqual(self.server.requests[-1][1]['temperature'],.2)
     def test_stdin_and_limits(self):
         self.assertEqual(self.cli('task','--content-stdin',stdin='test').returncode,0)
         self.cfg['max_tool_calls']=1;self.savecfg()

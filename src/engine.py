@@ -6,6 +6,7 @@ import datetime as dt
 import fcntl
 import ipaddress
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -21,7 +22,7 @@ import urllib.request
 import uuid
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = '0.2.0'
+VERSION = '0.2.1'
 DEFAULTS = {
     'default_model': 'deepseek-flash', 'websearch': None, 'granularity': 'coarse', 'parallel': 2, 'read_roots': ['../inbox', './sub_workspace'],
     'deny_read_paths': [], 'task_timeout_seconds': 240, 'request_timeout_seconds': 90,
@@ -32,7 +33,36 @@ DEFAULTS = {
     'http_retries': 1, 'extract_depth': 'basic', 'fetch_timeout_seconds': 30,
     'allow_http_endpoints': False
 }
+PARAMETERS = ('temperature', 'top_p', 'presence_penalty', 'frequency_penalty', 'reasoning_effort', 'thinking')
+DEFAULTS.update({k: None for k in PARAMETERS})
 SECRETS = []
+
+def validate_parameters(values):
+    for k in PARAMETERS:
+        v = values.get(k)
+        if v is None: continue
+        if k in ('temperature','top_p','presence_penalty','frequency_penalty'):
+            lo, hi = {'temperature':(0,2),'top_p':(0,1),'presence_penalty':(-2,2),'frequency_penalty':(-2,2)}[k]
+            if type(v) not in (int,float) or not math.isfinite(v) or not lo <= v <= hi:
+                raise Failure('INVALID_CONFIG', f'{k} must be a finite number in [{lo}, {hi}]', 2)
+        elif k == 'thinking':
+            if v not in ('auto','enabled','disabled'):
+                raise Failure('INVALID_CONFIG', 'thinking must be auto/enabled/disabled', 2)
+        elif not isinstance(v,str) or not v or len(v)>32:
+            raise Failure('INVALID_CONFIG', 'reasoning_effort must be a nonempty string', 2)
+
+def model_body(model, overrides=None):
+    body = dict(model.get('extra_body', {}))
+    values = {k:model[k] for k in PARAMETERS if k in model}
+    values.update(overrides or {})
+    validate_parameters(values)
+    for k,v in values.items():
+        if v is None or (k in ('thinking','reasoning_effort') and v == 'auto'):
+            body.pop(k, None)
+        else:
+            body[k] = {'type':v} if k == 'thinking' else v
+    return body
+
 
 class Failure(Exception):
     def __init__(self, code, message, exit_code=1, detail=None):
@@ -81,7 +111,9 @@ def config():
     out.update(user)
     for k, default in DEFAULTS.items():
         v = out[k]
-        if isinstance(default, bool):
+        if k in PARAMETERS:
+            good = True
+        elif isinstance(default, bool):
             good = type(v) is bool
         elif isinstance(default, int):
             good = type(v) is int and (v >= 0 if k == 'http_retries' else v > 0)
@@ -93,6 +125,7 @@ def config():
             good = isinstance(v, str) and bool(v)
         if not good:
             raise Failure('INVALID_CONFIG', f'config.json 字段无效：{k}', 2)
+    validate_parameters(out)
     if out['extract_depth'] not in ('basic', 'advanced') or not 1 <= out['fetch_timeout_seconds'] <= 60:
         raise Failure('INVALID_CONFIG', 'extract 配置无效', 2)
     return out
@@ -130,6 +163,7 @@ def profile(name, kind, cfg):
     if kind == 'model':
         if not isinstance(obj.get('model'), str) or not obj['model']:
             raise Failure('INVALID_CONFIG', f'{name} 缺少 model', 2)
+        validate_parameters(obj)
         if not isinstance(obj.get('extra_body', {}), dict):
             raise Failure('INVALID_CONFIG', 'extra_body 必须为 JSON 对象', 2)
         if set(obj.get('extra_body', {})) & {'messages', 'tools', 'model', 'stream', 'tool_choice', 'api_key'}:
@@ -458,7 +492,7 @@ class Runner:
             # DeepSeek uses max_tokens; OpenAI Chat Completions uses max_completion_tokens.
             if urllib.parse.urlsplit(self.model['url']).hostname == 'api.deepseek.com':
                 payload['max_tokens'] = payload.pop('max_completion_tokens')
-            payload.update(self.model.get('extra_body', {}))
+            payload.update(model_body(self.model))
             result = self.tools.http.post(self.model['url'], self.model['api_key'], payload)
             self.calls += 1
             for k, v in result.get('usage', {}).items():

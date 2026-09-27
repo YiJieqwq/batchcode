@@ -16,8 +16,6 @@ out=ROOT/'dist';out.mkdir(exist_ok=True)
 target=out/f'batchcode-v{version}.zip'
 with zipfile.ZipFile(target,'w',zipfile.ZIP_DEFLATED,compresslevel=9) as z:
     for name in sorted(files):z.write(ROOT/name,'batchcode/'+name)
-    # Release installs include a ready runtime default, never the author's runtime config.
-    z.writestr('batchcode/config.json',(ROOT/'config.default.json').read_bytes())
 digest=hashlib.sha256(target.read_bytes()).hexdigest()
 Path(str(target)+'.sha256').write_text(digest+'  '+target.name+'\n')
 print(target)

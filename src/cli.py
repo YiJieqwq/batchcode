@@ -20,7 +20,13 @@ class Parser(argparse.ArgumentParser):
     def error(self, message):
         raise e.Failure('INVALID_ARGUMENT', message, 2)
 
+SETTING_KEYS = ('model','websearch','granularity','parallel') + e.PARAMETERS
+
 def settings(p, parallel=True):
+    for name in ('temperature','top_p','presence_penalty','frequency_penalty'):
+        p.add_argument('--'+name.replace('_','-'), '--'+name, dest=name, type=float)
+    p.add_argument('--reasoning-effort', '--reasoning_effort', dest='reasoning_effort')
+    p.add_argument('--thinking', choices=['auto','enabled','disabled'])
     p.add_argument('--model')
     p.add_argument('--websearch')
     p.add_argument('--granularity', choices=['fine','coarse'])
@@ -41,8 +47,11 @@ def parser():
         q=ops.add_parser(name);q.add_argument('--session',required=True)
         if name=='fork-session':q.add_argument('--target-session')
     q=ops.add_parser('config');q.add_argument('scope',choices=['g','s']);q.add_argument('--session')
-    settings(q);q.add_argument('--unset',action='append',choices=['model','websearch','granularity','parallel'])
+    settings(q);q.add_argument('--unset',action='append',choices=SETTING_KEYS)
     ops.add_parser('self-check')
+    d=ops.add_parser('doctor', help='Read-only DNS diagnosis; no API calls or repairs')
+    d.add_argument('--model');d.add_argument('--websearch');d.add_argument('--json', action='store_true')
+    d.add_argument('--samples', type=int, default=3);d.add_argument('--timeout', type=float, default=10)
     return p
 
 def new_id():
@@ -58,12 +67,13 @@ def read(sid):
 def blank(sid):return {'version':e.VERSION,'session':sid,'status':'inactive','messages':[],'seq':0,'overrides':{}}
 
 def changes(a):
-    d={k:getattr(a,k) for k in ('model','websearch','granularity','parallel') if getattr(a,k,None) is not None}
+    d={k:getattr(a,k) for k in SETTING_KEYS if getattr(a,k,None) is not None}
     if d.get('websearch')=='none':d['websearch']=None
     return d
 
 def validate(d):
-    if set(d)-{'model','websearch','granularity','parallel'}:raise e.Failure('INVALID_CONFIG','Unknown setting',2)
+    e.validate_parameters(d)
+    if set(d)-set(SETTING_KEYS):raise e.Failure('INVALID_CONFIG','Unknown setting',2)
     if 'parallel' in d and (type(d['parallel']) is not int or not 1<=d['parallel']<=32):raise e.Failure('INVALID_CONFIG','parallel must be 1–32',2)
     if 'granularity' in d and d['granularity'] not in ('fine','coarse'):raise e.Failure('INVALID_CONFIG','Invalid granularity',2)
     for k,folder in [('model','model'),('websearch','websearch')]:
@@ -76,7 +86,7 @@ def validate(d):
         e.load_json(p)  # Configure without requiring a live key.
 
 def effective(cfg,override=None):
-    return {'model':cfg['default_model'],'websearch':cfg['websearch'],'granularity':cfg['granularity'],'parallel':cfg['parallel'],**(override or {})}
+    return {'model':cfg['default_model'],'websearch':cfg['websearch'],'granularity':cfg['granularity'],'parallel':cfg['parallel'],**{k:cfg[k] for k in e.PARAMETERS if cfg.get(k) is not None},**(override or {})}
 
 @contextlib.contextmanager
 def active(sid):
@@ -126,6 +136,9 @@ def fork_many(items):
             raise
 
 def management(a,cfg):
+    if a.operation=='doctor':
+        import doctor
+        return doctor.run(a,cfg)
     if a.operation=='self-check':
         validate(effective(cfg))
         for folder in ('model','websearch'):
@@ -185,14 +198,14 @@ def tasks(a,cfg):
     shared=changes(a);validate(shared)
     ids=set()
     for item in items:
-        if not isinstance(item,dict) or set(item)-{'session','content','fork_from','model','websearch','granularity'}:raise e.Failure('INVALID_ARGUMENT','Invalid task object fields',2)
+        if not isinstance(item,dict) or set(item)-({'session','content','fork_from','model','websearch','granularity'} | set(e.PARAMETERS)):raise e.Failure('INVALID_ARGUMENT','Invalid task object fields',2)
         if not isinstance(item.get('content'),str) or not item['content'].strip():raise e.Failure('MISSING_CONTENT','Each task needs nonempty content',2)
         if len(item['content'])>cfg['max_context_chars']:raise e.Failure('INPUT_TOO_LARGE','Task content exceeds limit',2)
         item['session']=e.safe_id(item['session']) if item.get('session') else new_id()
         if item['session'] in ids:raise e.Failure('DUPLICATE_SESSION','One batch cannot run the same session twice',2)
         ids.add(item['session'])
         if 'fork_from' in item:item['fork_from']=e.safe_id(item['fork_from'])
-        override={k:v for k,v in item.items() if k in ('model','websearch','granularity')}
+        override={k:v for k,v in item.items() if k in (('model','websearch','granularity') + e.PARAMETERS)}
         if override.get('websearch')=='none':override['websearch']=None
         validate(override);item['override']={**shared,**override}
     sources={i['fork_from'] for i in items if 'fork_from' in i}
@@ -215,6 +228,9 @@ def worker(item,cfg):
             # Parameters have been validated; editing a missing session creates it.
             if not exists(sid):e.atomic_json(path(sid),obj)
             mn,model=e.profile(opts['model'],'model',cfg)
+            overrides={k:opts[k] for k in e.PARAMETERS if k in opts}
+            model = dict(model, extra_body=e.model_body(model,overrides))
+            for k in e.PARAMETERS: model.pop(k,None)
             sn,search=e.profile(opts['websearch'],'search',cfg) if opts['websearch'] else (None,None)
             args=SimpleNamespace(session=sid,granularity=opts['granularity'])
             runner=e.Runner(args,cfg,mn,model,sn,search)
@@ -270,9 +286,9 @@ def main():
     os.umask(0o077)
     try:
         a=parser().parse_args();cfg=e.config();e.init_dirs();validate(effective(cfg))
-        if a.command=='op':management(a,cfg);return 0
+        if a.command=='op':return management(a,cfg) or 0
         if a.action=='list':
-            if any(getattr(a,k,None) for k in ('session','content','content_stdin','task','tasks_stdin','model','websearch','granularity','parallel')):raise e.Failure('INVALID_ARGUMENT','task list takes no run arguments',2)
+            if any(getattr(a,k,None) for k in ('session','content','content_stdin','task','tasks_stdin','model','websearch','granularity','parallel') + e.PARAMETERS):raise e.Failure('INVALID_ARGUMENT','task list takes no run arguments',2)
             ids=sorted(p.stem for p in (e.ROOT/'sessions').glob('*.json'))
             groups={True:[],False:[]}
             for sid in ids:groups[is_active(sid)].append(sid)

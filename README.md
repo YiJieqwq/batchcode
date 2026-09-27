@@ -9,7 +9,7 @@ Python 3.10+ 标准库实现，无第三方 pip 依赖。支持 Debian / Ubuntu�
 下载发行包，解压后：
 
 ```bash
-unzip batchcode-v0.2.0.zip
+unzip batchcode-v0.2.1.zip
 cd batchcode
 bash install.sh
 ```
@@ -181,3 +181,31 @@ python3 scripts/package.py
 GitHub Actions 配置了 Python 3.10 / 3.12 / 3.14 的离线回归及安装打包检查，是否通过以实际 Actions 结果为准。
 
 MIT License，沿用仓库原有 LICENSE。
+
+## 只读 DNS 诊断（v0.2.1）
+
+```bash
+batchcode op doctor
+batchcode op doctor --model=deepseek-flash --websearch=tavily --samples=3 --timeout=10
+batchcode op doctor --websearch=tavily --json
+```
+
+在**容器内**测量所选 API 域名的系统解析耗时，不需要填写密钥，不调用模型/搜索 API，不修改 `/etc/resolv.conf`，也不探测或选择其他公共 DNS。只有显式调用才联网；原 `op self-check` 仍离线。
+每次解析在可终止的独立进程中执行（默认单次最多 10 秒），避免诊断被阻塞的解析器无限挂住。退出码 0 表示本次 DNS 采样未见异常；1 表示解析失败、间歇失败或中位数至少 1 秒的启发式警告；2 表示配置/参数错误。**快不代表答案正确，慢也不自动证明 DNS 配置错误。** 不检查 TLS、代理、API 服务响应或实际计费性能。
+详情见 [DNS 排障](docs/DNS.md)。独立 DNS 修复脚本不纳入项目。
+
+## 模型采样与思考参数（v0.2.1）
+
+```bash
+batchcode task --temperature=0.7 --top-p=1 --reasoning-effort=auto --content="任务"
+batchcode op config g --temperature=1
+batchcode op config s --session=01 --thinking=enabled --reasoning-effort=high
+batchcode op config s --session=01 --unset=temperature
+```
+
+支持 `temperature`、`top_p`、`presence_penalty`、`frequency_penalty`、`thinking`、`reasoning_effort`。CLI 用连字符（也接受下划线），JSON 用下划线。所有字段可选；可以写在模型 `.txt` 顶层，也可通过 task / 全局配置 / 会话配置覆盖。
+优先级：任务对象 > 命令 > 会话 > 全局 > 模型配置（顶层优先于 extra_body）> 服务端默认。全局未设置这些字段时不覆盖模型配置；`--unset` 恢复继承。任务 JSON 中 `null` 明确不发送该字段。
+
+内置 DS profile：`thinking="enabled"`、`reasoning_effort="auto"`、`temperature=1`、`top_p=1`。**auto 是 batchcode 约定，意味着不发送该字段，使用服务端默认；不是 DS API 的字面合法深度值。** 当前官方文档默认思考深度为 high，而不是保证模型自动选择深度。
+`thinking` 可用 auto/enabled/disabled；effort 的其他值原样传递，是否支持取决于模型。temperature 范围 0–2，top_p 0–1，两种 penalty 为 -2–2；不填则不强制发送。DS 不再支持 penalty，思考模式下 temperature 等参数也可能无效，因此默认 DS profile 不添加无效 penalty。通常只调整 temperature/top_p 之一。
+开启思考后，既有 4096 输出 token 上限可能不足；需要时调整 `config.json` 的 `max_output_tokens`，不要把输出截断误诊成 DNS 故障。
