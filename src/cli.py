@@ -45,7 +45,8 @@ def target_flags(p):
 def parser():
     p=Parser(prog='batchcode');p.add_argument('--version',action='version',version=c.VERSION)
     top=p.add_subparsers(dest='command',required=True)
-    t=top.add_parser('task');t.add_argument('refs',nargs='*',help='[session ref] or rerun <ref>')
+    t=top.add_parser('task');t.add_argument('refs',nargs='*',help='Existing name/ID, or rerun <existing ref>. Omit to create a new session.')
+    t.add_argument('--name',help='Name a new session, or rename the referenced session before running. For batches use the per-task JSON name field.')
     options(t,batch=True);target=t.add_mutually_exclusive_group();target.add_argument('--evt_id',type=int);target.add_argument('--msg_id',type=int)
     t.add_argument('--content');t.add_argument('--content-stdin',action='store_true');t.add_argument('--task',action='append');t.add_argument('--tasks-stdin',action='store_true')
     g=top.add_parser('gconf').add_subparsers(dest='action',required=True)
@@ -178,15 +179,15 @@ def management(a,diag):
         if not a.drop_suffix:raise c.Failure('DROP_SUFFIX_REQUIRED','--rerun requires --drop-suffix; no edit performed',2)
         item={'session':a.ref,'edit':{'evt_id':a.evt_id,'content':a.content},'overrides':changes(a)}
         return run_batch([item],None,diag)
-    create=a.action=='set';updates=changes(a)
-    if create:
+    updates=changes(a)
+    if a.action=='set':
         conf.validate(updates,True)
         if set(a.unset or [])&set(updates):raise c.Failure('INVALID_ARGUMENT','Cannot set and unset same field',2)
     if a.action=='evt' and a.edit_action=='edit' and updates:
         raise c.Failure('INVALID_ARGUMENT','Configuration overrides on edit require --rerun',2)
-    try:sid,name=st.resolve(a.ref,create=create)
+    try:sid,name=st.resolve(a.ref)
     except c.Failure as ex:
-        if ex.code=='NOT_FOUND' and a.action in ('get','del'):print(f'{a.ref}/status: not_found');return
+        if ex.code=='NOT_FOUND' and a.action=='del':print(f'{a.ref}/status: not_found');return
         raise
     if a.action=='fork':
         dst=st.fork_batch([(sid,a.dst,a.part)])[0];print(f'{a.dst}/status: forked, sessionid={dst}, parent_id={sid}');return
@@ -250,63 +251,70 @@ def build_tasks(a):
     overrides=changes(a);parallel=overrides.pop('parallel',None);conf.validate(overrides,True)
     if parallel is not None:conf.validate({'parallel':parallel})
     if a.task or a.tasks_stdin:
-        if a.refs or a.content is not None or a.content_stdin or a.evt_id or a.msg_id:raise c.Failure('INPUT_CONFLICT','Do not mix batch/single/rerun inputs',2)
+        if a.refs or a.name is not None or a.content is not None or a.content_stdin or a.evt_id is not None or a.msg_id is not None:raise c.Failure('INPUT_CONFLICT','Do not mix batch/single/rerun inputs; put name in each task JSON object',2)
         if a.task and a.tasks_stdin:raise c.Failure('INPUT_CONFLICT','Choose --task or --tasks-stdin',2)
         try:items=json_stdin() if a.tasks_stdin else [c.decode(x) for x in a.task]
         except ValueError:raise c.Failure('INVALID_JSON','Invalid task object',2)
     elif len(a.refs)==2 and a.refs[0]=='rerun':
         if (a.evt_id is None)==(a.msg_id is None) or a.content is not None or a.content_stdin:raise c.Failure('RERUN_SELECTOR','rerun needs exactly one --evt_id/--msg_id and no content',2)
-        items=[{'session':a.refs[1],'rerun':{'evt_id':a.evt_id,'msg_id':a.msg_id}}]
+        items=[{'session':a.refs[1],'name':a.name,'rerun':{'evt_id':a.evt_id,'msg_id':a.msg_id}}]
     else:
         if len(a.refs)>1 or a.evt_id is not None or a.msg_id is not None:raise c.Failure('INVALID_ARGUMENT','task [ref] or task rerun <ref>',2)
         if a.content_stdin and a.content is not None:raise c.Failure('INPUT_CONFLICT','Choose content or stdin',2)
-        items=[{'session':a.refs[0] if a.refs else None,'content':stdin() if a.content_stdin else a.content}]
+        items=[{'session':a.refs[0] if a.refs else None,'content':stdin() if a.content_stdin else a.content,'name':a.name}]
     if not isinstance(items,list) or not items:raise c.Failure('INVALID_TASKS','Expected nonempty task array',2)
     result=[]
     for i in items:
-        if not isinstance(i,dict) or set(i)-({'session','content','fork_from','rerun'}|conf.SESSION_FIELDS-{'parallel'}):raise c.Failure('INVALID_TASK','Unknown task fields',2)
+        if not isinstance(i,dict) or set(i)-({'session','content','fork_from','rerun','name'}|conf.SESSION_FIELDS-{'parallel'}):raise c.Failure('INVALID_TASK','Unknown task fields',2)
+        ref=i.get('session')
+        if ref is not None and (not isinstance(ref,str) or not ref):raise c.Failure('INVALID_REF','session must be a nonempty existing name/ID or omitted',2)
+        if i.get('name') is not None:st.valid_name(i['name'])
+        if 'fork_from' in i:
+            if ref is not None:raise c.Failure('INPUT_CONFLICT','fork_from creates a new session: omit session, name the destination with name',2)
+            if not isinstance(i['fork_from'],str) or not i['fork_from']:raise c.Failure('INVALID_REF','fork_from must reference an existing session',2)
         if 'rerun' in i:
+            if ref is None:raise c.Failure('RERUN_SELECTOR','rerun requires an existing session reference',2)
             rr=i['rerun']
             if not isinstance(rr,dict) or set(rr)-{'evt_id','msg_id'} or sum(rr.get(k)is not None for k in ('evt_id','msg_id'))!=1 or any(v is not None and (type(v)is not int or v<1) for v in rr.values()) or 'fork_from'in i or i.get('content') is not None:raise c.Failure('RERUN_SELECTOR','rerun object requires exactly one positive user ID and no content/fork',2)
         if 'rerun' not in i and (not isinstance(i.get('content'),str) or not i['content'].strip()):raise c.Failure('MISSING_CONTENT','Each task needs content',2)
         per={k:v for k,v in i.items() if k in conf.SESSION_FIELDS};conf.validate(per,True)
-        item={k:v for k,v in i.items() if k not in conf.SESSION_FIELDS};item['overrides']={**overrides,**per};result.append(item)
+        item={k:v for k,v in i.items() if k not in conf.SESSION_FIELDS};item['overrides']={**overrides,**per};item['new_name']=item.pop('name',None);result.append(item)
     return result,parallel
 
 def prepare_refs(items):
+    """Resolve all references before creating/forking/renaming. Never typo-create."""
     ids=set();destnames=set();groups={}
     for item in items:
-        ref=item.get('session') or 'session-'+uuid.uuid4().hex[:10]
-        if not isinstance(ref,str):raise c.Failure('INVALID_REF','Session ref must be a name or ID string',2)
-        item['name']=ref
-        if 'fork_from' in item:
-            st.valid_name(ref)
-            if ref in destnames:raise c.Failure('DUPLICATE_SESSION','Duplicate target name',2)
-            destnames.add(ref)
+        ref=item.get('session');requested=item.get('new_name')
+        if requested is not None:st.valid_name(requested)
+        if ref is not None:
+            item['name']=ref
             try:
-                src,_=st.resolve(item['fork_from'])
-                try:st.resolve(ref)
-                except c.Failure as ex:
-                    if ex.code!='NOT_FOUND':raise
-                else:raise c.Failure('TARGET_EXISTS','Fork target already exists',2)
-                item['source_id']=src;groups.setdefault(src,[]).append(item)
-            except c.Failure as ex:item['pre_error']=ex
-            continue
-        try:
-            sid,name=st.resolve(ref);item.update(sid=sid,name=name)
-        except c.Failure as ex:
-            if ex.code=='NOT_FOUND' and not ('rerun'in item or 'edit'in item or st.ID_RE.fullmatch(ref)):
-                st.valid_name(ref);sid='new:'+ref
-            else:
+                sid,name=st.resolve(ref);item.update(sid=sid,name=name)
+            except c.Failure as ex:
                 item['pre_error']=ex;sid='unresolved:'+ref
-        if sid in ids or ref in destnames:raise c.Failure('DUPLICATE_SESSION','Two tasks resolve to same ID/name',2)
-        ids.add(sid);destnames.add(ref)
+            if sid in ids:raise c.Failure('DUPLICATE_SESSION','Two tasks resolve to the same session ID/reference',2)
+            ids.add(sid)
+            if requested is not None and 'pre_error' not in item:
+                try:st.check_name_available(requested,item['sid'])
+                except c.Failure as ex:item['pre_error']=ex
+            dest=requested if requested is not None else item['name']
+        else:
+            dest=requested if requested is not None else 'session-'+uuid.uuid4().hex[:10]
+            st.valid_name(dest);item.update(name=dest,create_new=True)
+            try:st.check_name_available(dest)
+            except c.Failure as ex:item['pre_error']=ex
+        if dest in destnames:raise c.Failure('DUPLICATE_SESSION','Two tasks request the same display name',2)
+        destnames.add(dest)
+        if 'fork_from' in item and 'pre_error' not in item:
+            try:
+                src,_=st.resolve(item['fork_from']);item['source_id']=src;groups.setdefault(src,[]).append(item)
+            except c.Failure as ex:item['pre_error']=ex
     if set(groups)&ids:raise c.Failure('FORK_CONFLICT','Cannot run a fork source in the same batch',2)
     for item in items:
-        if 'pre_error' in item:continue
-        if 'fork_from'not in item and 'sid'not in item:
-            try:item['sid'],item['name']=st.resolve(item['name'],create=True)
-            except c.Failure as ex:item['pre_error']=ex
+        if 'pre_error'in item or not item.get('create_new') or 'fork_from'in item:continue
+        try:item['sid']=st.add(item['name'],{})
+        except c.Failure as ex:item['pre_error']=ex
     for src,group in groups.items():
         try:
             generated=st.fork_batch([(src,i['name'],'all') for i in group])
@@ -317,12 +325,14 @@ def prepare_refs(items):
 
 def launch(item):
     sid=item.get('sid','unresolved');diag=c.Diagnostics();start=time.monotonic();proc=None
-    result={'sessionid':sid,'name':item['name'],'status':'failed','exit':1,'events':[],'artifacts':[],'diagnostics':[], 'elapsed':0,'granularity':'coarse','answer':'summary'}
+    result={'sessionid':sid,'name':item['name'],'status':'failed','exit':1,'events':[],'artifacts':[],'diagnostics':[], 'elapsed':0,'granularity':'coarse','answer':'summary','created':bool(item.get('create_new') and 'sid'in item)}
     try:
         if 'pre_error'in item:raise item['pre_error']
         if CANCEL.is_set():raise c.Failure('INTERRUPTED','Batch cancelled before task started',4)
         with st.session_locked(sid) as (s,name,fd):
             result['name']=name
+            desired=item.get('new_name')
+            if desired is not None and not item.get('create_new'):st.check_name_available(desired,sid)
             overrides=item['overrides'];conf.validate(overrides,True)
             s.conf.update(overrides);s.save(False)
             with c.lock(c.ROOT/'locks/profiles.lock',shared=True,blocking=True):cfg=conf.resolve(s.conf,diag)
@@ -338,6 +348,8 @@ def launch(item):
                 candidate=copy.deepcopy(s.ctx);target=cx.from_native(candidate,{'role':'user','content':item['content']},s.alloc)
             # No destructive edit/truncation committed until final config+candidate compile checks pass.
             cx.compile_ctx(candidate,cfg['provider'],diag)
+            if desired is not None and desired!=name and not item.get('create_new'):
+                st.rename(sid,desired);result['renamed_from']=name;name=desired;result['name']=name
             removed_msgs=len(s.ctx['msgs'])-len(candidate['msgs']);removed_evts=len(s.ctx['events'])-len(candidate['events'])
             s.ctx=candidate;s.save();mid=target['msg_id'];rid=uuid.uuid4().hex
             result.update(input_msg_id=mid,input_evt_ids=target['evt_ids'])
@@ -410,7 +422,7 @@ def emit_spool(path,stream):
     finally:Path(path).unlink(missing_ok=True)
 
 def render(results,initial):
-    diagnostics=initial.items+[{**x,'sessionid':r['sessionid']} for r in results for x in r['diagnostics']]
+    diagnostics=initial.items+[{**x,'session':r['name']} for r in results for x in r['diagnostics']]
     diag_print(diagnostics,True)
     fine=any(r['granularity']=='fine' for r in results)
     print('[tool feedbacks are hidden in stderr]' if fine else 'Tool call records are hidden',file=sys.stderr)
@@ -418,6 +430,8 @@ def render(results,initial):
     for r in results:
         name=r['name'];sid=r['sessionid']
         print(f'\n{name}/status: {r["status"]}, sessionid={sid}, elapsed {r["elapsed"]:.1f}s, submitted={str(r.get("submitted",False)).lower()}')
+        if r.get('renamed_from'):print(f'{name}/renamed-from: {r["renamed_from"]}')
+        if r.get('created'):print(f'{name}/session: created')
         if 'input_msg_id'in r:
             label='evt_id='+str(r['input_evt_ids'][0]) if len(r['input_evt_ids'])==1 else 'evt_ids='+c.dumps(r['input_evt_ids'])
             print(f'{name}/input: msg_id={r["input_msg_id"]}, {label}')

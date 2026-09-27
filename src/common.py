@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import tempfile
 
-VERSION = '0.3.0'
+VERSION = '0.3.1'
 ROOT = Path(__file__).resolve().parents[1]
 DISPLAY_LIMIT = 24000
 

@@ -64,16 +64,16 @@ def transaction(index,op,**extra):
     c.atomic(c.ROOT/'state/index-transaction.json',{'op':op,'index':index,**extra})
     recover_index()
 
-def resolve(ref,create=False,conf=None):
+def resolve(ref):
+    """Resolve an existing name/ID only. Creation is always a separate explicit action."""
+    if not isinstance(ref,str) or not ref:
+        raise c.Failure('INVALID_REF','Expected a nonempty existing session name or ID',2)
     with index_locked() as idx:
-        if ID_RE.fullmatch(ref or ''):
-            if ref not in idx['names'].values():raise c.Failure('NOT_FOUND','Unknown session ID (IDs are never auto-created)',2)
+        if ID_RE.fullmatch(ref):
+            if ref not in idx['names'].values():raise c.Failure('NOT_FOUND','Session ID not found; no session was created',2)
             sid=ref
         elif ref in idx['names']:sid=idx['names'][ref]
-        elif create:
-            valid_name(ref);sid=new_id();idx['names'][ref]=sid
-            transaction(idx,'create',entries=[{'id':sid,'info':blank_info(sid),'conf':conf or {},'ctx':ctxmod.empty()}])
-        else:raise c.Failure('NOT_FOUND','Session name not found',2)
+        else:raise c.Failure('NOT_FOUND','Session name not found. Omit the task reference and use --name to create, or use session add. No session was created.',2)
         return sid,next(n for n,i in idx['names'].items() if i==sid)
 
 def ensure_registered(sid):
@@ -136,13 +136,21 @@ def add(name,conf):
         transaction(idx,'create',entries=[{'id':sid,'info':blank_info(sid),'conf':conf,'ctx':ctxmod.empty()}])
         return sid
 
+def check_name_available(name,sid=None):
+    valid_name(name)
+    with index_locked() as idx:
+        if name in idx['names'] and idx['names'][name]!=sid:
+            raise c.Failure('TARGET_EXISTS','Target name belongs to another session; nothing was renamed',2)
+
 def rename(sid,newname):
     valid_name(newname)
     with index_locked() as idx:
-        if newname in idx['names']:raise c.Failure('TARGET_EXISTS','Target name exists',2)
         old=next((n for n,i in idx['names'].items() if i==sid),None)
         if old is None:raise c.Failure('NOT_FOUND','Session deleted',2)
+        if old==newname:return False
+        if newname in idx['names']:raise c.Failure('TARGET_EXISTS','Target name exists; nothing was renamed',2)
         del idx['names'][old];idx['names'][newname]=sid;transaction(idx,'rename')
+        return True
 
 def delete_all(sid):
     with index_locked() as idx:

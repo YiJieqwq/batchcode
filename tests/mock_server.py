@@ -39,6 +39,16 @@ class Handler(BaseHTTPRequestHandler):
             if n==0:text='searching';calls=[call('web_search',{'query':'test'})]
             elif n==1:text='reading';calls=[call('fetch_url',{'url':'https://93.184.216.34/'})]
             else:text='sources';calls=[call('submit_answer',{'answer':'WEB_DONE'})] if n==2 else []
+        elif task=='hello' and getattr(self.server,'submit_greeting',False):
+            if n==0:text='';calls=[call('submit_answer',{'answer':'GREETING_SUBMITTED'})]
+            else:text='CLOSING'
+        elif task=='missingfile':
+            if n==0:text='read';calls=[call('read_file',{'path':str(self.server.root/'input/absent.md')})]
+            else:text='FILE_ERROR_HANDLED'
+        elif task=='badjson':
+            if n==0:
+                text='read';calls=[call('read_file',{'path':'unused'})];calls[0]['function']['arguments']='{"path":'
+            else:text='ARGUMENT_ERROR_HANDLED'
         elif task=='loop':text='loop';calls=[call('list_directory',{'path':str(self.server.root/'input')})]
         elif task=='history':text='HISTORY_OK' if any(m.get('content')=='GOODBYE' for m in msgs) else 'NO_HISTORY'
         elif task=='secret':text='sk-example tvly-example'

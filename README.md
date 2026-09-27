@@ -2,14 +2,14 @@
 
 **一次调用，多个代理。** 面向终端用户和 AI agent 的轻量任务 CLI：会话分支与并发、可编辑上下文、provider 请求编译、明确的最终答案提交。
 
-**当前版本：v0.3.0（不兼容旧 CLI／会话格式）**。Python 3.10+ 标准库，无 pip 第三方依赖；支持 Debian/Ubuntu（含 proot），不支持原生 Termux 或 Windows。
+**当前版本：v0.3.1**（兼容 v0.3.0 会话存储；收紧会话引用语义，不兼容 0.2.x CLI／会话格式）。Python 3.10+ 标准库，无 pip 第三方依赖；支持 Debian/Ubuntu（含 proot），不支持原生 Termux 或 Windows。
 
 ## 安装
 
 从 [Releases](https://github.com/YiJieqwq/batchcode/releases) 下载 ZIP：
 
 ```bash
-unzip batchcode-v0.3.0.zip
+unzip batchcode-v0.3.1.zip
 cd batchcode
 bash install.sh
 ```
@@ -30,22 +30,39 @@ websearch/tavily.txt
 ## 一次调用完成任务
 
 ```bash
-batchcode task 调研 --content="总结 /workspace/inbox/文档.md"
+batchcode task --name=调研 --content="总结 /workspace/inbox/文档.md"
 batchcode task 调研 --content="核实结论并附来源"
 
 batchcode task --parallel=2 \
-  --task='{"session":"技术","content":"分析技术可行性"}' \
-  --task='{"session":"成本","content":"分析成本与风险"}'
+  --task='{"name":"技术","content":"分析技术可行性"}' \
+  --task='{"name":"成本","content":"分析成本与风险"}'
 
 batchcode task --tasks-stdin <<'JSON'
 [
-  {"session":"支持论据","fork_from":"调研","content":"检查支持证据"},
-  {"session":"反方核查","fork_from":"调研","content":"检查反面证据"}
+  {"name":"支持论据","fork_from":"调研","content":"检查支持证据"},
+  {"name":"反方核查","fork_from":"调研","content":"检查反面证据"}
 ]
 JSON
 ```
 
-单任务省略会话名则自动创建；已存在的会话加载上下文。所有已有会话引用接受 **name 或生成的 sessionid**（例如 `s_` 加 32 位十六进制 UUID）。创建/fork/rename 的目标是新名称，不能自指定 ID。
+**位置参数只引用已有会话，写错名称或 ID 直接报 `NOT_FOUND`，绝不自动创建或近似匹配。** 不填引用才新建：可用 `--name=名称` 同步命名，省略 name 则自动生成显示名。
+
+```bash
+# 新建并命名（重名报错，不会偷偷续聊）
+batchcode task --name=调研 --content="第一轮任务"
+# 引用已有会话，继续任务
+batchcode task 调研 --content="继续核实"
+# 引用已有会话，同时重命名
+batchcode task 调研 --name=文献调研 --content="继续核实"
+# ID 也能引用；输出依然用映射得到的名称
+batchcode task s_0123456789abcdef0123456789abcdef --name=新名称 --content="继续"
+```
+
+`--name` 不是配置项，不进入 sconf 或 info.json。重命名只改索引，ID、历史和成果路径保持；重名、会话忙或运行预检失败时不改名。通过预检后先改名再运行，远端 API 失败不会撤回已成功的改名。改为自己的现有名称是 no-op。`task rerun REF --name=新名称 --msg_id=N` 也支持同样规则。
+
+批量对象的 `session` 只用于已有引用，`name` 用于新建命名或续聊重命名。不要把批次共用 `--name` 加在命令上，应在每个对象里写 name。`fork_from` 是显式新建分支：省略 session、用 name 指定新分支名，不再把 session 当目标名称。
+
+所有已有引用都接受 **name 或生成的 sessionid**（例如 `s_` 加 32 位十六进制 UUID）。显式 `session add NAME` 和 `session fork ... NEWNAME` 仍可新建，目标不可自指定 ID。
 
 同源批量 fork 取同一快照；不同会话并发，同会话必须串行。name 与 ID 指向同一个会话时也判为重复。批次中局部配置/执行失败不会取消其他独立任务；输入结构或批次重复 ID 错误在执行前拒绝。
 
@@ -55,11 +72,11 @@ JSON
 batchcode task 调研 --answer=summary --granularity=fine --content="查阅材料"
 ```
 
-- **`--answer=summary`（默认）**：子代理通过 `submit_answer` 提交最终答案。允许反复修订，不截断、不限提交次数或累计提交长度；每次回传程序计算的字符数。最后一次有效提交才用于交付，提交不会结束循环，后续收尾仍保存 ctx。
+- **`--answer=summary`（默认）**：子代理通过 `submit_answer` 提交最终答案。任务完成、已无法完成且无后续操作，或没有任务且无后续操作时，**都要求至少提交一次，包括问候／测试**；不得为了提交而执行无关文件／搜索操作。允许反复修订，不截断、不限提交次数或累计提交长度；每次回传程序计算的字符数。最后一次有效提交才用于交付，提交不会结束循环，后续收尾仍保存 ctx。
 - **`--answer=full`**：stdout 保留本次全部可见 `assistant_content`。不输出 reasoning 或工具反馈正文；可用显式 ctx 查询查看原始事件。
 - **`--granularity=coarse`（默认）**：stderr 不显示工具调用摘要，提示 `Tool call records are hidden`。
 - **`--granularity=fine`**：stderr 显示调用摘要（submit 参数正文仍隐藏）；工具反馈正文不显示。
-- 本轮没有有效提交，兜底**本轮最后一条完整 content**，stderr 提示 `NO_SUBMISSION` 和本轮 evt 起止 ID。不靠“是不是实质任务”的语义分类判失败。历史/fork 继承的 submit 不计本轮。
+- 本轮没有有效提交，兜底**本轮最后一条完整 content**，stderr 提示 `NO_SUBMISSION` 和本轮 evt 起止 ID。这是模型漏交时的异常兜底，不再把问候设计为常规兜底路径；不靠程序语义分类判失败。提示词不保证模型永不漏交，因此 warning 保留。历史/fork 继承的 submit 不计本轮。
 - 错误和 warning 始终输出。已有答案不能掩盖超时/失败；状态和退出码照实返回。
 
 示例 stdout：
@@ -81,10 +98,12 @@ batchcode task 调研 --answer=summary --granularity=fine --content="查阅材�
 
 ```text
 [critical 0, warning 1]
-warning/NO_SUBMISSION: sessionid=s_... Returned last complete content; evt_start=1, evt_end=2
+warning/NO_SUBMISSION: session=核查 Returned last complete content; evt_start=1, evt_end=2
 [tool feedbacks are hidden in stderr]
 调研/evt/21: read_file: {"path":"/workspace/inbox/文档.md"}
 ```
+
+**输出前缀使用会话 name，不使用长 ID**，即使输入用 ID，答案和工具轨迹仍以当前 name 定位。诊断中的会话定位也显示 name；状态行保留一次稳定 sessionid，列表和 info 仍能查 ID。
 
 **必须收集 stdout、stderr 和退出码，禁止 `2>/dev/null`。** 模型文字可能仿冒状态头，不要靠全文关键词判断成功。`done` 是结束数，不是成功数；`max_elapsed` 是最大单任务耗时，排队等待不算其中。模型的事实准确性不由 `completed` 保证。
 
@@ -155,11 +174,11 @@ batchcode session del all 分支C
 
 查询范围是 **ID 而非数组位置**。按 evt 返回事件落盘原文，按 msg 返回组织记录和引用的事件原文。显示超过 24000 字符**整次拒绝**（stdout 不输出半份数据），提示缩小范围或 export。无筛选的 get ctx 返回原文件；即使编译失败，仍可查/导出。export 默认拒绝覆盖已有文件。
 
-只有 set conf / task 会按缺失名称自动创建；get/export 不创建；del 不存在是 no-op；未知生成 ID 不自动创建；fork 来源必须存在、目标必须新建。
+显式引用必须已存在；`task REF`、`session set conf REF`、get/export 等引用错误直接报错，不新建。创建使用省略引用的 task（可选 --name）、`session add` 或显式 fork。`session del ctx/conf/all` 不存在仍为幂等 no-op。fork 来源必须存在、目标必须新建。
 
 `info.json` **没有 name**，名称唯一真相为 `session_index.json`。实际路径、锁、parent_id 都用不可变 ID。rename 只更新索引，不移动目录，不改历史；同名删除重建获得新 ID，旧成果不会被覆盖。list 展示名称及 ID，Active 依据运行锁，不把配置管理锁算运行。
 
-删除 ctx 保留配置及编号高水位；删除 conf 清空覆盖；删除 all 删除会话记录、运行审计，但保留成果。fork 不复制旧日志和成果。删除不是 provider 侧撤回或磁盘安全擦除。
+**删除 ctx 只是清空历史，不删除会话身份，也不使它无法运行**：仍出现在 session list，可以用同一 name／ID 接收新任务。删除 ctx 保留配置及编号高水位；删除 conf 清空覆盖；删除 all 删除会话记录、运行审计，但保留成果。fork 不复制旧日志和成果。删除不是 provider 侧撤回或磁盘安全擦除。
 
 ## 历史编辑与 rerun
 
@@ -193,7 +212,7 @@ ctx 结构和编译规则见 [CONTEXT.md](docs/CONTEXT.md)。stderr 任务头为
 
 工具：read_file、list_directory、write_file、submit_answer，以及可用时的 Tavily web_search/fetch_url。写入只在 `sub_workspace/<sessionid>/`；无 shell，`exec_command` 在 TODO。只支持 UTF-8 文本，不含 PDF/Word 解析和通用多模态/Responses API。
 
-**这不是 OS 级 sandbox**，无法对抗同 UID 任意进程改文件；允许读取的文件会发送给模型服务。不要扩大 read_roots 到整个私人工作区，凭据目录和程序状态始终禁止工具读取。详细边界见 CONFIG.md。
+**这不是 OS 级 sandbox**，无法对抗同 UID 任意进程改文件；允许读取的文件会发送给模型服务。不要扩大 read_roots 到整个私人工作区，凭据目录和程序状态始终禁止工具读取。详细边界见 CONFIG.md。文件操作失败会区分 FILE_NOT_FOUND／PERMISSION_DENIED／IS_A_DIRECTORY／NOT_A_DIRECTORY 等，反馈包含请求路径和 errno；JSON 解析/类型错误才报告参数问题。
 
 ## 诊断与卸载
 

@@ -28,3 +28,16 @@ python3 scripts/package.py
 ```
 
 Release ZIP is checked separately by extraction into a fresh directory, local install, CLI/schema smoke, uninstall and reinstall. Package builder refuses nonempty keys in public profiles and excludes session data/venv/private test reports/DNS repair. Runtime startup/selection.json is generated only if absent. Current 0.2.x data is not converted or removed.
+
+
+## v0.3.1 — 2026-09-28
+
+149 offline/mock tests passed locally, including 30 additions around strict references/no hidden creation, omitted-ref creation, --name for creation/continuation/rerun, conflict and busy refusal, name-only output prefixes, per-task batch names, maintained ID/history/artifact paths, explicit fork destinations, and typed filesystem error feedback to both model and caller.
+
+Prompt assertions verify summary's finished/abandoned/no-task submission instructions, per-submission character counts, soft length behavior and full-mode direct replies. A mock greeting submission proves normal submit/closing/result routing; it does NOT certify a real model's compliance. Fallback tests deliberately simulate missing submissions so the safety net remains covered.
+
+The user supplied an independent-container v0.3.0 report (119 offline tests, real DeepSeek/Tavily scenarios). It reports three hello runs without unrelated exploration and working submit/feedback/soft-length cases. This is external observational evidence for v0.3.0, not a guarantee of consistent submissions; indeed its greeting cases intentionally did not submit under the old prompt. The new v0.3.1 prompt still needs live validation. OpenAI live integration, adversarial streaming interruption and hard-kill behavior were not certified by that report. Private report and session contents are not included in the public repository.
+
+`session del ctx` leaving a listed, runnable session is intentional, not a defect; tested by clearing history then submitting a new task under the same ID. Only explicit `session del all` removes the identity.
+
+Before release: run the CI matrix and clean ZIP install/uninstall/reinstall checks on this exact revision. No actual provider credentials or paid calls are used in this suite.

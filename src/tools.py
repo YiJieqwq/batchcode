@@ -1,5 +1,6 @@
 """Restricted file and Tavily tools. No shell or transcript rewriting."""
 import codecs
+import errno
 import ipaddress
 import os
 from pathlib import Path
@@ -69,6 +70,23 @@ def sandbox_write(relative, content, limit, session=None):
         os.close(fd)
     return {'saved': relative, 'bytes': len(data)}
 
+def filesystem_failure(name,args,exc):
+    """Describe file failures using the requested path, not FD-relative component names or raw exception text."""
+    descriptions={errno.ENOENT:('FILE_NOT_FOUND','No such file or directory'),
+                  errno.EACCES:('PERMISSION_DENIED','Permission denied'),
+                  errno.EPERM:('PERMISSION_DENIED','Operation not permitted'),
+                  errno.EISDIR:('IS_A_DIRECTORY','Expected a file, but the path is a directory'),
+                  errno.ENOTDIR:('NOT_A_DIRECTORY','A path component is not a directory'),
+                  errno.ENOSPC:('NO_SPACE','No space left on the filesystem'),
+                  errno.EROFS:('READ_ONLY_FILESYSTEM','Filesystem is read-only'),
+                  errno.ELOOP:('SYMLINK_DENIED','Symbolic-link traversal is not allowed')}
+    code,reason=descriptions.get(exc.errno,('FILESYSTEM_ERROR','Filesystem operation failed'))
+    path=args.get('path') if isinstance(args,dict) else None
+    detail={'operation':name,'errno':errno.errorcode.get(exc.errno,'UNKNOWN'),'errno_number':exc.errno}
+    if path is not None:detail['path']=path
+    message=reason+(f': {path}' if path is not None else '')
+    return Failure(code,message,**detail)
+
 class Tools:
     def __init__(self, cfg, search, http, session=None):
         self.session = session
@@ -107,6 +125,12 @@ class Tools:
                             definition('fetch_url', '提取公开网页正文，不用于内部或私密链接。', {'url': string}, ['url'])]
         return definitions
     def execute(self, name, args):
+        try:return self._execute(name,args)
+        except OSError as exc:
+            if name not in ('read_file','list_directory','write_file'):raise
+            raise filesystem_failure(name,args,exc) from exc
+
+    def _execute(self, name, args):
         allowed = {d['function']['name']: d['function']['parameters'] for d in self.definitions()}
         if name not in allowed or not isinstance(args, dict):
             raise Failure('INVALID_TOOL', '未知工具或参数格式错误')
@@ -140,6 +164,8 @@ class Tools:
                     names = sorted(n for n in os.listdir(fd) if self.allowed((p / n).resolve()))
                     entries = names[offset:offset + self.cfg['max_directory_entries']]
                     return {'entries': entries, 'next_offset': offset + len(entries), 'truncated': offset + len(entries) < len(names)}
+                if stat.S_ISDIR(info.st_mode):
+                    raise IsADirectoryError(errno.EISDIR, 'Expected a text file', str(p))
                 if not stat.S_ISREG(info.st_mode):
                     raise Failure('READ_DENIED', '只允许读取普通文本文件')
                 os.lseek(fd, offset, os.SEEK_SET)

@@ -115,3 +115,29 @@ class SafetyTests(unittest.TestCase):
         (self.root/'input/x').write_text('中')
         with self.assertRaises(c.Failure) as cm:t.execute('read_file',{'path':'input/x'})
         self.assertEqual(cm.exception.code,'READ_PAGE_TOO_SMALL')
+
+    def test_file_error_classes_preserved(self):
+        import errno
+        for cls,err,code in [(FileNotFoundError,errno.ENOENT,'FILE_NOT_FOUND'),(PermissionError,errno.EACCES,'PERMISSION_DENIED'),(IsADirectoryError,errno.EISDIR,'IS_A_DIRECTORY'),(NotADirectoryError,errno.ENOTDIR,'NOT_A_DIRECTORY'),(OSError,errno.ENOSPC,'NO_SPACE')]:
+            with self.subTest(code=code),patch.object(self.tool,'_execute',side_effect=cls(err,'mock component error')):
+                with self.assertRaises(c.Failure) as cm:self.tool.execute('read_file',{'path':'input/example.md'})
+                self.assertEqual(cm.exception.code,code);self.assertEqual(cm.exception.location['path'],'input/example.md')
+                self.assertEqual(cm.exception.location['errno'],errno.errorcode[err])
+                self.assertNotIn('JSON',cm.exception.text)
+    def test_read_directory_actual_error(self):
+        with self.assertRaises(c.Failure) as cm:self.tool.execute('read_file',{'path':'input'})
+        self.assertEqual(cm.exception.code,'IS_A_DIRECTORY')
+    def test_file_result_not_directory_actual_error(self):
+        (self.root/'input/file').write_text('abc')
+        with self.assertRaises(c.Failure) as cm:self.tool.execute('list_directory',{'path':'input/file'})
+        self.assertEqual(cm.exception.code,'NOT_A_DIRECTORY')
+    def test_storage_resolve_never_creates(self):
+        before=(self.root/'session_index.json').read_bytes()
+        with self.assertRaises(c.Failure):st.resolve('misspelled')
+        self.assertEqual(before,(self.root/'session_index.json').read_bytes())
+    def test_no_summary_character_target_still_requires_submit(self):
+        import runner
+        cfg={**self.cfg,'summary_chars':0,'answer':'summary'}
+        text=runner.system_prompt(cfg,[])
+        self.assertIn('以上情形至少提交一次',text);self.assertIn('不设建议字符数',text)
+        self.assertNotIn('0 个字符以内',text)

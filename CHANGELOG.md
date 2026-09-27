@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.1 — 2026-09-28
+
+- Explicit task/session references are strict: unknown names/IDs fail, never silently create; session set conf now also requires an existing session. Omitted task reference still creates.
+- Add task --name for new-session naming and existing-session rename (including rerun), without moving data or persisting name into info/config. Duplicate/new-name collisions and busy sessions fail before modification. Batch tasks use name for new labels, session only for existing refs; fork_from destinations also use name.
+- Keep readable name-based output prefixes even when invoking by ID; reduce diagnostic ID repetition. Stable ID remains in status/list/info.
+- Summary instructions require submit_answer in finished, unable-to-continue and no-task cases (including greetings), without unrelated tool work. Per-submission character soft target, revisions, normal closing and abnormal no-submit fallback preserved. Full mode unchanged.
+- Split filesystem failures from JSON/argument failures; provide accurate file error codes, requested path and errno.
+- Clarify del ctx keeps an existing session runnable/listed. Same schema as v0.3.0, no data migration.
+- 149 offline/mock tests pass locally; new prompt not live-certified.
+
+
 ## 0.3.0 — 2026-09-27 (breaking)
 
 - Object-first task/gconf/session CLI; remove op/sconf and old flags. No old storage migration.

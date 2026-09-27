@@ -6,7 +6,7 @@ startup/selection.json selects defaults only (deepseek-flash / tavily). Model JS
 
 `gconf add/set/get/del NAME`; add reads complete JSON via --heredoc; set accepts any declared field as `--field-name=value` (underscore alias supported), get uses valueless field filters. No arbitrary dict accepted as API params beyond extra_body; unknown config fields fail. Set/unset conflict fails before change. gconf del refuses currently selected or directly session-referenced profile.
 
-`session set conf REF` allows the same fields except parallel, plus modelconf. `task` supports these and batch parallel. Explicit task fields persist to sconf, including API overrides; passing secrets through CLI may appear in shell history/process arguments, prefer a private profile or session add --heredoc. Config get masks api_key; ctx get/export preserves raw.
+`session set conf REF` requires an existing name/ID (no typo-triggered creation) and allows the same fields except parallel, plus modelconf. `task` supports these and batch parallel. Explicit task fields persist to sconf, including API overrides; passing secrets through CLI may appear in shell history/process arguments, prefer a private profile or session add --heredoc. Config get masks api_key; ctx get/export preserves raw.
 
 Unset removes a stored override so it inherits. Missing optional field = inherit; optional API null = omit; reasoning_effort/thinking auto = omit field (not literal provider value); numeric 0 remains real. Other runtime fields require valid typed values. False is not missing. No global defaults copied into sconf.
 
@@ -66,3 +66,8 @@ HTTP redirects rejected to protect Authorization headers. HTTP error response bo
 JSON/profile write defaults mode 600, private directories 700. Logs contain diagnostic metadata and references, not another authoritative full transcript. Atomic replacement and journals improve interruption recovery, not disk secure erase. state/output-* spools are ephemeral; SIGKILL/host termination may leave them behind. No total disk quota or OS sandbox is provided.
 
 Lifecycle locks serialize installation/uninstallation against commands; installer-generated self-check runs under installer lock. One shared installation may be used by multiple CLI invocations, each with its own concurrency limit. Cooperative SIGINT/SIGTERM cancels active workers/queued tasks; hard kill cannot guarantee cleanup. Don't blindly retry a tool with an unknown interrupted side effect—inspect artifacts or rerun explicitly.
+
+
+## v0.3.1 naming is not configuration
+
+`task --name=NEW --content=...` creates; `task REF --name=NEW --content=...` renames an existing ID after successful preflight. `name` does not enter gconf/sconf/tmpconf or info.json. Batch objects distinguish `session` (existing ref) and `name` (desired label). All position/name/ID lookups are strict; only omitted task refs or explicit session add/fork create. The current display name is looked up from the index for output, even if the caller supplied an ID. Storage remains schema 1; v0.3.0 data needs no conversion.
