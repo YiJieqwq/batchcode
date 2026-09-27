@@ -22,7 +22,7 @@ import urllib.request
 import uuid
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = '0.2.1'
+VERSION = '0.2.2'
 DEFAULTS = {
     'default_model': 'deepseek-flash', 'websearch': None, 'granularity': 'coarse', 'parallel': 2, 'read_roots': ['../inbox', './sub_workspace'],
     'deny_read_paths': [], 'task_timeout_seconds': 240, 'request_timeout_seconds': 90,

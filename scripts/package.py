@@ -9,7 +9,7 @@ ROOT=Path(__file__).resolve().parents[1]
 version=re.search(r"VERSION = '([^']+)'",(ROOT/'src/engine.py').read_text()).group(1)
 for p in [ROOT/'model/deepseek-flash.txt',ROOT/'websearch/tavily.txt']:
     if json.loads(p.read_text())['api_key']!='':raise SystemExit('Refusing to package nonempty API key: '+p.name)
-files=['LICENSE','README.md','AGENT.md','CHANGELOG.md','.gitignore','install.sh','batchcode','requirements.lock','config.default.json','model/deepseek-flash.txt','websearch/tavily.txt']
+files=['LICENSE','README.md','AGENT.md','CHANGELOG.md','.gitignore','install.sh','uninstall.sh','batchcode','requirements.lock','config.default.json','model/deepseek-flash.txt','websearch/tavily.txt']
 for folder in ['src','tests','docs','scripts']:
     files += [str(p.relative_to(ROOT)) for p in (ROOT/folder).rglob('*') if p.is_file() and '__pycache__' not in p.parts and p.suffix in ('.py','.md')]
 out=ROOT/'dist';out.mkdir(exist_ok=True)

@@ -36,3 +36,7 @@ Mock credentials are fixed fake strings. No live test in CI; never add API secre
 Explicit real DNS diagnostic (2 samples/host) observed DeepSeek 5.9481/5.2657 seconds and Tavily 5.4713/5.3203 seconds; warning exit 1 as designed, no resolver changes or paid API calls. This establishes slow system name resolution here, not the precise underlying network cause.
 No v0.2.1 live model API integration. Enabling DS thinking changes runtime behavior relative to the previously live-tested non-thinking profile. Release fresh install verified separately.
 The user-supplied v0.2.0 external report describes 24 offline tests plus successful real DeepSeek/Tavily scenarios (not OpenAI); report scenario-count headings are inconsistent, so no exact live-test count is asserted here.
+
+## v0.2.2
+
+35 offline/mock tests passed. Uninstall tests cover repeated removal, data retention, foreign launcher preservation, active management locks and symlinked venv rejection. Fresh ZIP local install → uninstall → repeated uninstall → reinstall passed in a temporary directory. Main working installation was not uninstalled. No new paid API integration tests.

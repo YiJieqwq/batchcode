@@ -9,7 +9,7 @@ Python 3.10+ 标准库实现，无第三方 pip 依赖。支持 Debian / Ubuntu�
 下载发行包，解压后：
 
 ```bash
-unzip batchcode-v0.2.1.zip
+unzip batchcode-v0.2.2.zip
 cd batchcode
 bash install.sh
 ```
@@ -209,3 +209,16 @@ batchcode op config s --session=01 --unset=temperature
 内置 DS profile：`thinking="enabled"`、`reasoning_effort="auto"`、`temperature=1`、`top_p=1`。**auto 是 batchcode 约定，意味着不发送该字段，使用服务端默认；不是 DS API 的字面合法深度值。** 当前官方文档默认思考深度为 high，而不是保证模型自动选择深度。
 `thinking` 可用 auto/enabled/disabled；effort 的其他值原样传递，是否支持取决于模型。temperature 范围 0–2，top_p 0–1，两种 penalty 为 -2–2；不填则不强制发送。DS 不再支持 penalty，思考模式下 temperature 等参数也可能无效，因此默认 DS profile 不添加无效 penalty。通常只调整 temperature/top_p 之一。
 开启思考后，既有 4096 输出 token 上限可能不足；需要时调整 `config.json` 的 `max_output_tokens`，不要把输出截断误诊成 DNS 故障。
+
+## 卸载
+
+先停止提交新任务，并等待已有任务退出，然后在安装目录执行：
+
+```bash
+bash uninstall.sh
+```
+
+移除**确实指向本安装目录的**托管 PATH 入口和 `.venv`，保留源码、配置、API 密钥、会话、日志及 `sub_workspace` 成果。重复执行安全；不匹配的同名命令和其他安装的入口不会删除。有任务/管理操作持锁时退出码 3；无交互确认，不提权，不卸载系统包、不修改 DNS。拒绝链接形式的 `.venv`。
+
+这不是数据擦除：需要彻底移除数据时，在卸载成功并自行备份之后，由你手动删除安装目录。重新使用只需 `bash install.sh`。若 shell 缓存旧命令，运行 `hash -r`。
+卸载时**不要并发发起新任务或安装操作**；锁检查不是跨所有进程的安装生命周期事务。文件系统/权限错误可能造成部分移除，修正权限后可重复执行。

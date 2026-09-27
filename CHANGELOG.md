@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.2 — 2026-09-27
+
+- Add conservative uninstall.sh: remove only exact matching PATH launchers and private .venv; preserve all user data and source. Busy lock checks, idempotence, symlink rejection. No system package removal.
+
 ## 0.2.1 — 2026-09-27
 
 - Add explicit read-only DNS doctor; no automatic repairs or resolver changes.
