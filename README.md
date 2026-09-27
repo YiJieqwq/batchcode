@@ -2,14 +2,14 @@
 
 **一次调用，多个代理。** 面向终端用户和 AI agent 的轻量任务 CLI：会话分支与并发、可编辑上下文、provider 请求编译、明确的最终答案提交。
 
-**当前版本：v0.3.2**（沿用 v0.3.x 会话存储；安装时清理废弃配置，不兼容 0.2.x CLI／会话格式）。Python 3.10+ 标准库，无 pip 第三方依赖；支持 Debian/Ubuntu（含 proot），不支持原生 Termux 或 Windows。
+**当前版本：v0.3.3**（沿用 v0.3.x 会话存储；安装时清理废弃配置，不兼容 0.2.x CLI／会话格式）。Python 3.10+ 标准库，无 pip 第三方依赖；支持 Debian/Ubuntu（含 proot），不支持原生 Termux 或 Windows。
 
 ## 安装
 
 从 [Releases](https://github.com/YiJieqwq/batchcode/releases) 下载 ZIP：
 
 ```bash
-unzip batchcode-v0.3.2.zip
+unzip batchcode-v0.3.3.zip
 cd batchcode
 bash install.sh
 ```
@@ -27,11 +27,13 @@ websearch/tavily.txt
 
 > 不要把 ZIP 覆盖解压到已填密钥的目录。安装脚本保留密钥和自定义设置，但解压器可能覆盖同名 `.txt`。本版本不迁移 0.2.x 会话、不删除旧数据。请在新目录安装；默认 profile 是公开空 key 样板，填 key 后不要提交到 Git。
 
-### 从 v0.3.0 / v0.3.1 更新
+### 从旧 v0.3.x 更新
 
 不需要转换 ctx。准备好新版代码、保留或迁入自己的模型与会话配置后，运行 `bash install.sh`：安装器在持有生命周期锁时，**先备份再清除已废弃的答案长度配置字段**，不动密钥、其他字段、原始 ctx 或历史审计。备份位于私有 `state/config-backup-*/`，含原配置内容，勿上传；重复安装不会反复改写已清理的文件。若迁入旧配置发生在安装后，再运行一次安装脚本。
 
 这是删除旧字段，不是继续提供一个兼容参数；CLI、当前配置视图、请求提示词和新提交反馈中不再提供答案长度目标。已有历史工具反馈保持原样，不为了升级篡改旧对话。
+
+安装器还会在独占生命周期锁期间清理旧版本留下的**孤儿会话锁**：只删除 ID 已不在索引、且 `session/<id>` 也不存在的空常规锁文件。只处理生成的 ID 文件名；全局锁、现存会话锁、成果目录保留。忙锁、符号链接、硬链接或非空／异常文件跳过并提示，不当作垃圾强删。重复安装安全。
 
 ## 一次调用完成任务
 
@@ -79,6 +81,8 @@ batchcode task 调研 --answer=summary --granularity=fine --content="查阅材�
 ```
 
 **`submit_answer` 在两种回答模式里都常驻，交付要求相同**：任务完成、已无法完成且无后续操作，或没有任务且无后续操作时，至少提交一次，包括问候／测试；不得为提交而执行无关文件／搜索操作。允许反复修订，最终以本次运行最后一次有效提交为准，提交后继续正常收尾。
+
+共用系统指令要求 **`answer` 字段只放答案正文本身，不额外附加包裹标签、XML 包装、函数调用式标记或调用结束标记**。用户明确要求的 XML／HTML／代码属于答案正文，仍允许输出。程序不对答案做正则剥标签或改写，原文查询与字符计数保持真实；提示词约束不能保证模型永不违背。
 
 - **`--answer=summary`（默认）**：stdout 只显示最终 `/answer` 和程序状态／成果，不回灌中间可见发言。
 - **`--answer=full`**：stdout 显示本次全部可见 `assistant_content`，**然后同样显示最终 `/answer`**。它不是“只展示过程却藏起已提交的答案”。不输出 reasoning 或工具反馈正文；显式 ctx 查询可以查看原始事件。
@@ -199,6 +203,10 @@ batchcode session del all 分支C
 `info.json` **没有 name**，名称唯一真相为 `session_index.json`。实际路径、锁、parent_id 都用不可变 ID。rename 只更新索引，不移动目录，不改历史；同名删除重建获得新 ID，旧成果不会被覆盖。list 展示名称及 ID，Active 依据运行锁，不把配置管理锁算运行。
 
 **删除 ctx 只是清空历史，不删除会话身份，也不使它无法运行**：仍出现在 session list，可以用同一 name／ID 接收新任务。删除 ctx 保留配置及编号高水位；删除 conf 清空覆盖；删除 all 删除会话记录、运行审计，但保留成果。fork 不复制旧日志和成果。删除不是 provider 侧撤回或磁盘安全擦除。
+
+`session del all` 成功后也会移除 `locks/<sessionid>.lock` 和 `running/<sessionid>.lock`，不再永久留下两个空文件。删除只拒绝**目标会话**正在运行或被管理操作占用的情况，不要求其他会话停下。`del ctx/conf`、rename 不清理这两份锁。
+
+锁文件创建／检查与删除通过同一索引锁协调，删除过程中保有目标锁、注销 ID，再移除对应锁文件；过期 ID 不会重新建锁。`session list` 的运行状态探测不创建文件。删除中断的事务会在下次索引操作时恢复；文件系统错误导致部分删除时不会报成功，需排障后重试。全局 `index.lock`、`lifecycle.lock`、`profiles.lock` 不删除。
 
 ## 历史编辑与 rerun
 

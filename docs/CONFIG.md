@@ -77,3 +77,10 @@ Lifecycle locks serialize installation/uninstallation against commands; installe
 There is no supported configuration field or CLI flag for answer-length guidance. Defaults, per-run prompts and submission feedback contain no numeric answer target. Ask for length in the task's content; actual per-submission `chars` is still computed for the model.
 
 Installation performs a narrowly scoped, idempotent cleanup of the retired top-level field in model profiles and session configs (also their pending config transaction), preserving every other value. It reads/plans changes before writing; stores private verbatim backups of every changed file in state/config-backup-* before the first atomic replacement. Does not alter ctx, info or stored past tool feedback. On permission/filesystem failure, cleanup may be partial; fix the cause and rerun install, with backups available. Do not send these backups to GitHub. This cleanup is not a runtime compatibility alias, a general 0.2 migration or permission to overwrite configured profiles.
+
+
+## v0.3.3 housekeeping and answer formatting
+
+No new public configuration fields. Successful `session del all` removes its per-ID management/running lock pair along with the already-defined session record/index deletion, still preserving artifacts. Other active sessions are unaffected except for the short index critical section; a busy target is refused. Install-time orphan cleanup holds the exclusive lifecycle lock and removes only safely identified retired empty lock files; unexpected files are retained with a diagnostic. No automatic DNS changes, history rewriting, runtime GC, or package upgrades added.
+
+The answer formatting rule is shared across summary/full: answer body only, no extraneous XML/tag/tool-call/end wrappers. Explicitly requested markup/code remains valid. Do not attempt to repair suspected output pollution by regex-removing tags from stored or emitted answers; distinguish provider-submitted text from a possible rendering bug using raw ctx. Actual model compliance with instructions still requires live observation.

@@ -563,3 +563,113 @@ class ProjectTests(unittest.TestCase):
         self.assertEqual(self.file('one','info.json').read_bytes(),oldinfo)
         self.assertNotIn('mock-key',r.stdout+r.stderr)
         r=self.cli('task','one','--answer=full','--content=hello');self.assertEqual(r.returncode,0,r.stderr)
+
+    def test_97_del_all_removes_both_lock_files_keeps_output(self):
+        self.cli('task','--name=one','--content=readwrite');sid=self.sid('one')
+        paths=[self.root/folder/(sid+'.lock') for folder in ('locks','running')]
+        self.assertTrue(all(p.exists() for p in paths))
+        output=self.root/'sub_workspace'/sid/'report.md';original=output.read_bytes()
+        r=self.cli('session','del','all','one');self.assertEqual(r.returncode,0,r.stderr)
+        self.assertIn('session locks removed',r.stdout);self.assertIn('artifacts retained',r.stdout)
+        self.assertTrue(all(not p.exists() for p in paths));self.assertEqual(output.read_bytes(),original)
+        r=self.cli('session','list');self.assertEqual(r.returncode,0,r.stderr);self.assertNotIn(sid,r.stdout)
+        self.assertTrue(all(not p.exists() for p in paths))
+
+    def test_98_del_ctx_and_conf_keep_lock_inodes(self):
+        self.cli('task','--name=one','--content=hello');sid=self.sid('one')
+        paths=[self.root/folder/(sid+'.lock') for folder in ('locks','running')]
+        before={p:p.stat().st_ino for p in paths}
+        for part in ('ctx','conf'):
+            r=self.cli('session','del',part,'one');self.assertEqual(r.returncode,0,r.stderr)
+            self.assertEqual(before,{p:p.stat().st_ino for p in paths})
+        r=self.cli('task','one','--content=hello');self.assertEqual(r.returncode,0,r.stderr)
+        self.assertEqual(self.sid('one'),sid)
+
+    def test_99_list_does_not_materialize_running_locks(self):
+        self.cli('session','add','one');sid=self.sid('one')
+        r=self.cli('session','list');self.assertEqual(r.returncode,0,r.stderr)
+        self.assertIn('one\t'+sid,r.stdout)
+        self.assertFalse((self.root/'running'/(sid+'.lock')).exists())
+        self.assertFalse((self.root/'locks'/(sid+'.lock')).exists())
+
+    def test_100_busy_running_lock_refuses_del_all_without_partial_delete(self):
+        self.cli('task','--name=one','--content=hello');sid=self.sid('one')
+        before=(self.root/'session_index.json').read_bytes()
+        path=self.root/'running'/(sid+'.lock')
+        with open(path,'r+') as f:
+            fcntl.flock(f,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            r=self.cli('session','del','all','one');self.assertEqual(r.returncode,3,r.stderr)
+        self.assertEqual(before,(self.root/'session_index.json').read_bytes())
+        self.assertTrue(self.file('one','ctx.json').exists())
+        self.assertTrue(path.exists());self.assertTrue((self.root/'locks'/(sid+'.lock')).exists())
+
+    def test_101_other_task_does_not_block_idle_session_deletion(self):
+        self.cli('task','--name=idle','--content=hello');sid=self.sid('idle')
+        self.server.gate_entered=threading.Event();self.server.gate_release=threading.Event()
+        proc=subprocess.Popen([sys.executable,str(self.root/'src/cli.py'),'task','--name=running','--url='+self.url+'/gated','--content=hello'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+        try:
+            self.assertTrue(self.server.gate_entered.wait(10),'worker did not reach gated request')
+            r=self.cli('session','del','all','idle');self.assertEqual(r.returncode,0,r.stderr)
+            self.assertIsNone(proc.poll(),'other task should still be waiting at mock provider')
+            self.assertFalse((self.root/'locks'/(sid+'.lock')).exists())
+            self.assertFalse((self.root/'running'/(sid+'.lock')).exists())
+        finally:
+            self.server.gate_release.set();out,err=proc.communicate(timeout=20)
+        self.assertEqual(proc.returncode,0,err);self.assertIn('running/status: completed',out)
+
+    def test_102_rename_does_not_retire_locks(self):
+        self.cli('task','--name=old','--content=hello');sid=self.sid('old')
+        paths=[self.root/folder/(sid+'.lock') for folder in ('locks','running')]
+        inodes=[p.stat().st_ino for p in paths]
+        r=self.cli('session','rename','old','new');self.assertEqual(r.returncode,0,r.stderr)
+        self.assertEqual([p.stat().st_ino for p in paths],inodes);self.assertEqual(self.sid('new'),sid)
+        self.assertEqual(self.cli('session','del','all','new').returncode,0)
+        self.assertTrue(all(not p.exists() for p in paths))
+
+    def test_103_unknown_id_delete_is_noop_without_recreating_files(self):
+        self.cli('session','add','one');sid=self.sid('one')
+        self.assertEqual(self.cli('session','del','all',sid).returncode,0)
+        r=self.cli('session','del','all',sid);self.assertEqual(r.returncode,0,r.stderr)
+        self.assertIn('not_found',r.stdout)
+        self.assertFalse((self.root/'locks'/(sid+'.lock')).exists())
+        self.assertFalse((self.root/'running'/(sid+'.lock')).exists())
+
+    def test_104_install_cleans_old_orphans_not_active_id_or_outputs(self):
+        self.cli('task','--name=one','--content=hello');live=self.sid('one')
+        dead='s_'+'a'*32
+        for folder in ('locks','running'):(self.root/folder/(dead+'.lock')).touch()
+        output=self.root/'sub_workspace'/dead/'report.md';output.parent.mkdir();output.write_text('KEEP')
+        ctx=self.file('one','ctx.json').read_bytes();info=self.file('one','info.json').read_bytes()
+        inodes={folder:(self.root/folder/(live+'.lock')).stat().st_ino for folder in ('locks','running')}
+        r=subprocess.run(['bash',str(self.root/'install.sh'),'--local'],capture_output=True,text=True,timeout=30)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('removed 2 orphan session lock files',r.stdout)
+        for folder,ino in inodes.items():
+            self.assertEqual((self.root/folder/(live+'.lock')).stat().st_ino,ino)
+            self.assertFalse((self.root/folder/(dead+'.lock')).exists())
+        self.assertEqual(output.read_text(),'KEEP');self.assertEqual(self.file('one','ctx.json').read_bytes(),ctx)
+        self.assertEqual(self.file('one','info.json').read_bytes(),info)
+        r=subprocess.run(['bash',str(self.root/'install.sh'),'--local'],capture_output=True,text=True,timeout=30)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertNotIn('orphan session lock files',r.stdout)
+
+    def test_105_answer_body_constraint_in_both_mode_system_prompts(self):
+        for mode in ('summary','full'):
+            with self.subTest(mode=mode):
+                r=self.cli('task','--name='+mode,'--answer='+mode,'--content=hello');self.assertEqual(r.returncode,0,r.stderr)
+                system=self.server.requests[-1][1]['messages'][0]['content']
+                for phrase in ('answer 字段只放答案正文本身','不要额外添加包裹答案的标签','XML 包装','函数调用式标记或调用结束标记','用户明确要求的代码或 XML/HTML 内容属于答案正文，不受此限制'):
+                    self.assertIn(phrase,system)
+                self.assertEqual(system.count('answer 字段只放答案正文本身'),1)
+
+    def test_106_no_regex_stripping_of_submitted_markup_or_suffix(self):
+        for stream,mode,body in [(True,'summary','<article><p>这是用户要求的 HTML。</p></article>\n'),(False,'full','这是原文 </answer>\n</invoke>\n')]:
+            with self.subTest(mode=mode,stream=stream):
+                self.server.answer_body=body
+                r=self.cli('task','--name='+mode,'--answer='+mode,'--stream='+str(stream).lower(),'--content=markup_answer')
+                self.assertEqual(r.returncode,0,r.stderr);self.assertIn(mode+'/answer: '+body,r.stdout)
+                ctx=self.ctx(mode)
+                call=next(e for e in ctx['events'] if e['kind']=='tool_call')
+                self.assertEqual(json.loads(call['value']['function']['arguments'])['answer'],body)
+                feedback=next(e for e in ctx['events'] if e['kind']=='tool')
+                self.assertEqual(json.loads(feedback['value']['content'])['chars'],len(body))
+                raw=self.cli('session','get','ctx',mode,'--evt_id='+str(call['evt_id']))
+                self.assertEqual(json.loads(raw.stdout),call)

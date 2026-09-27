@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.3 — 2026-09-28
+
+- Retire both per-session lock files on successful del all, preserving artifacts and global locks. Index-gated registered-session lock acquisition prevents stale references from recreating deleted lock files; list activity probing no longer creates running locks.
+- Busy target still rejects deletion before changes; other running sessions are not blocked for their full lifetime. Delete journal recovery includes lock cleanup and exact inode checks.
+- Installer removes only historical, safely identified empty orphan session locks under exclusive lifecycle locking; busy/unsafe files retained, no runtime GC or artifact cleanup.
+- Add shared answer-body-only instruction: no extra wrapper/XML/function-call/end tags; user-requested markup/code allowed. No regex stripping, transcript rewriting, or changed submission/count semantics.
+- Same ctx schema/CLI/settings as 0.3.2, with 208 offline/mock regression cases; actual model suffix behavior still needs live validation.
+
+
 ## 0.3.2 — 2026-09-28
 
 - Make submit_answer the normal final delivery requirement in both summary and full, including completed, abandoned and no-task replies. Still allows revisions/closing, no invented file/search work.

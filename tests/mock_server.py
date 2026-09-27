@@ -16,6 +16,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.path=='/search':self.send_obj({'results':[{'url':'https://93.184.216.34','content':'search text'}]});return
         if self.path=='/extract':self.send_obj({'results':[{'url':body['urls'][0],'raw_content':'full text'}],'failed_results':[]});return
         if self.path=='/slow':time.sleep(2)
+        if self.path=='/gated':
+            self.server.gate_entered.set();self.server.gate_release.wait(15)
         msgs=body['messages'];start=max(i for i,m in enumerate(msgs) if m['role']=='user');task=msgs[start]['content'].split('\n',1)[-1]
         tools=[m for m in msgs[start:] if m['role']=='tool'];n=len(tools)
         def call(name,args):return {'id':f'c{len(msgs)}','type':'function','function':{'name':name,'arguments':json.dumps(args,ensure_ascii=False)}}
@@ -52,6 +54,9 @@ class Handler(BaseHTTPRequestHandler):
         elif task in ('onlysubmit','unicode_submit'):
             text=''
             if n==0:calls=[call('submit_answer',{'answer':'ONLY_SUBMITTED_BODY' if task=='onlysubmit' else '好，A !\n🙂'})]
+        elif task=='markup_answer':
+            text='' if n==0 else 'CLOSING'
+            if n==0:calls=[call('submit_answer',{'answer':self.server.answer_body})]
         elif task=='loop':text='loop';calls=[call('list_directory',{'path':str(self.server.root/'input')})]
         elif task=='history':text='HISTORY_OK' if any(m.get('content')=='GOODBYE' for m in msgs) else 'NO_HISTORY'
         elif task=='secret':text='sk-example tvly-example'

@@ -68,7 +68,7 @@ class SafetyTests(unittest.TestCase):
     def test_reserve_counter_no_reuse(self):
         s=st.Session(self.sid);i=s.alloc('evt');s=st.Session(self.sid);self.assertGreater(s.alloc('evt'),i)
     def test_new_id_after_del(self):
-        with st.session_locked(self.sid):st.delete_all(self.sid)
+        st.delete_all(self.sid)
         new=st.add('one',{});self.assertNotEqual(new,self.sid)
     def test_idx_redo_partial_create(self):
         with st.index_locked() as idx:

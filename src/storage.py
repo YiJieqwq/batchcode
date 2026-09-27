@@ -4,6 +4,7 @@ import copy
 import os
 import re
 import shutil
+import stat
 import uuid
 import common as c
 import context as ctxmod
@@ -35,18 +36,76 @@ def check_index(obj):
     for name,sid in obj['names'].items():valid_name(name);spath(sid);ids.append(sid)
     if len(ids)!=len(set(ids)):raise c.Failure('INDEX_CORRUPT','Several names refer to one ID',2)
 
-def recover_index():
-    journal=c.ROOT/'state/index-transaction.json'
-    if not journal.exists():return
-    tx=c.load(journal);check_index(tx['index'])
-    if tx['op']=='create':
+def _unlink_locked(path,fd):
+    """Remove the exact checked inode, not any replacement at this pathname."""
+    try:current=path.lstat()
+    except FileNotFoundError:return False
+    held=os.fstat(fd)
+    if not stat.S_ISREG(current.st_mode) or current.st_size!=0 or current.st_nlink!=1 or (current.st_dev,current.st_ino)!=(held.st_dev,held.st_ino):
+        raise c.Failure('UNSAFE_LOCK','Lock pathname changed during cleanup; not removed',2)
+    path.unlink();c.fsync_dir(path.parent)
+    return True
+
+
+@contextlib.contextmanager
+def _delete_locks(sid):
+    """Under index.lock, nonblockingly hold BOTH existing lock inodes. Never create one.
+
+    Index gating prevents new registered-session lock openers. A real worker also
+    inherits its parent's management lock, but guard running independently too.
+    """
+    spath(sid)  # Validate before constructing file paths.
+    with contextlib.ExitStack() as stack:
+        held=[]
+        for folder in ('locks','running'):
+            path=c.ROOT/folder/(sid+'.lock')
+            try:info=path.lstat()
+            except FileNotFoundError:continue
+            if not stat.S_ISREG(info.st_mode) or info.st_size!=0 or info.st_nlink!=1:
+                raise c.Failure('UNSAFE_LOCK','Expected a private empty regular session lock; no cleanup performed',2)
+            try:fd=stack.enter_context(c.lock(path,create=False))
+            except FileNotFoundError:continue
+            actual=os.fstat(fd)
+            if (info.st_dev,info.st_ino)!=(actual.st_dev,actual.st_ino) or actual.st_size!=0 or actual.st_nlink!=1:
+                raise c.Failure('UNSAFE_LOCK','Session lock changed during acquisition',2)
+            held.append((path,fd))
+        yield held
+
+
+def _apply_index_transaction(tx,held=()):
+    """Caller owns index.lock, and for delete also all existing per-ID lock FDs."""
+    op=tx.get('op')
+    if op not in ('create','rename','delete'):
+        raise c.Failure('JOURNAL_CORRUPT','Unknown index transaction operation',2)
+    if op=='create':
         for entry in tx['entries']:
             p=spath(entry['id']);p.mkdir(exist_ok=True,mode=0o700)
             c.atomic(p/'info.json',entry['info']);c.atomic(p/'config.json',entry['conf']);c.atomic_text(p/'ctx.json',ctxmod.serialize(entry['ctx']))
-    elif tx['op']=='delete':
-        p=spath(tx['id'])
-        if p.exists():shutil.rmtree(p)
-    c.atomic(c.ROOT/'session_index.json',tx['index']);journal.unlink();c.fsync_dir(journal.parent)
+    elif op=='delete':
+        sid=tx['id']
+        if sid in tx['index']['names'].values():
+            raise c.Failure('JOURNAL_CORRUPT','Delete transaction still registers the removed ID',2)
+        p=spath(sid)
+        try:p.lstat()
+        except FileNotFoundError:pass
+        else:
+            shutil.rmtree(p);c.fsync_dir(p.parent)
+    # Deregister before retiring lock filenames. Index guard lasts until old FDs close.
+    c.atomic(c.ROOT/'session_index.json',tx['index'])
+    if op=='delete':
+        for path,fd in held:_unlink_locked(path,fd)
+    journal=c.ROOT/'state/index-transaction.json'
+    journal.unlink();c.fsync_dir(journal.parent)
+
+
+def recover_index():
+    """Index lock must be held. A failed/interrupted delete remains redoable."""
+    journal=c.ROOT/'state/index-transaction.json'
+    if not journal.exists():return
+    tx=c.load(journal);check_index(tx['index'])
+    if tx.get('op')=='delete':
+        with _delete_locks(tx['id']) as held:_apply_index_transaction(tx,held)
+    else:_apply_index_transaction(tx)
 
 def read_index():
     recover_index()
@@ -58,10 +117,18 @@ def read_index():
 def index_locked():
     with c.lock(c.ROOT/'locks/index.lock',blocking=True):yield read_index()
 
-def transaction(index,op,**extra):
+def _prepare_index_transaction(index,op,**extra):
     old=c.ROOT/'session_index.json'
     if old.exists():c.atomic(c.ROOT/'state/session_index.backup.json',c.load(old))
-    c.atomic(c.ROOT/'state/index-transaction.json',{'op':op,'index':index,**extra})
+    tx={'op':op,'index':index,**extra}
+    c.atomic(c.ROOT/'state/index-transaction.json',tx)
+    return tx
+
+
+def transaction(index,op,**extra):
+    if op=='delete':
+        raise c.Failure('LOCK_PROTOCOL','Use delete_all so target locks are checked before a delete is journaled',2)
+    _prepare_index_transaction(index,op,**extra)
     recover_index()
 
 def resolve(ref):
@@ -76,16 +143,37 @@ def resolve(ref):
         else:raise c.Failure('NOT_FOUND','Session name not found. Omit the task reference and use --name to create, or use session add. No session was created.',2)
         return sid,next(n for n,i in idx['names'].items() if i==sid)
 
+def _registered_name(idx,sid):
+    if sid not in idx['names'].values():
+        raise c.Failure('NOT_FOUND','Session was removed before operation acquired its lock',2)
+    if not spath(sid).is_dir():raise c.Failure('INDEX_CORRUPT','Indexed session directory missing',2)
+    return next(n for n,i in idx['names'].items() if i==sid)
+
+
 def ensure_registered(sid):
-    with index_locked() as idx:
-        if sid not in idx['names'].values():raise c.Failure('NOT_FOUND','Session was removed before operation acquired its lock',2)
-        if not spath(sid).is_dir():raise c.Failure('INDEX_CORRUPT','Indexed session directory missing',2)
-        return next(n for n,i in idx['names'].items() if i==sid)
+    with index_locked() as idx:return _registered_name(idx,sid)
+
 
 @contextlib.contextmanager
 def session_locked(sid):
-    with c.lock(c.ROOT/'locks'/(sid+'.lock')) as fd:
-        name=ensure_registered(sid);s=Session(sid);yield s,name,fd
+    # Registration check AND opening/flocking happen behind the same index gate.
+    # Never wait on a session lock while holding index.lock; return BUSY instead.
+    with contextlib.ExitStack() as stack:
+        with index_locked() as idx:
+            name=_registered_name(idx,sid)
+            fd=stack.enter_context(c.lock(c.ROOT/'locks'/(sid+'.lock')))
+        s=Session(sid)
+        yield s,name,fd
+
+
+@contextlib.contextmanager
+def running_locked(sid):
+    """Worker enters under the index gate; its inherited management FD remains held."""
+    with contextlib.ExitStack() as stack:
+        with index_locked() as idx:
+            _registered_name(idx,sid)
+            stack.enter_context(c.lock(c.ROOT/'running'/(sid+'.lock')))
+        yield
 
 class Session:
     def __init__(self,sid):
@@ -153,9 +241,20 @@ def rename(sid,newname):
         return True
 
 def delete_all(sid):
+    """Own target locking here, rather than being called inside session_locked().
+
+    This short index-gated operation can retire the lock inodes before releasing
+    the gate. Other running sessions keep going; only a busy target rejects it.
+    """
+    spath(sid)
     with index_locked() as idx:
-        idx['names']={n:i for n,i in idx['names'].items() if i!=sid}
-        transaction(idx,'delete',id=sid)
+        name=next((n for n,i in idx['names'].items() if i==sid),None)
+        if name is None:return None  # A concurrent deletion already completed.
+        with _delete_locks(sid) as held:
+            idx['names']={n:i for n,i in idx['names'].items() if i!=sid}
+            tx=_prepare_index_transaction(idx,'delete',id=sid)
+            _apply_index_transaction(tx,held)
+        return name
 
 def fork_batch(items):
     """Caller passes resolved source IDs; snapshots under sorted session locks, index held only for commit."""
@@ -173,10 +272,52 @@ def fork_batch(items):
                 idx['names'][name]=sid;ids.append(sid);entries.append({'id':sid,'info':info,'conf':conf,'ctx':ctx})
             transaction(idx,'create',entries=entries);return ids
 
-def active(sid):
+def _active_unlocked(sid):
+    """Probe under the index guard; absence means inactive, not 'create a file'."""
     p=c.ROOT/'running'/(sid+'.lock')
     try:
-        with c.lock(p):return False
+        with c.lock(p,create=False):return False
+    except FileNotFoundError:return False
     except c.Failure as ex:
         if ex.exit_code==3:return True
         raise
+
+
+def active(sid):
+    with index_locked() as idx:
+        if sid not in idx['names'].values():return False
+        return _active_unlocked(sid)
+
+
+def list_sessions():
+    # Avoid the former snapshot -> unlock -> creating probe race with del all.
+    with index_locked() as idx:
+        return [(name,sid,_active_unlocked(sid)) for name,sid in idx['names'].items()]
+
+
+def cleanup_orphan_locks():
+    """INSTALL ONLY: caller holds exclusive lifecycle.lock, then this index gate.
+
+    Remove only empty, single-link regular s_<uuid>.lock files whose ID is absent
+    from both index and session/. Preserve global locks and retained artifacts.
+    """
+    removed=0;skipped=[]
+    with index_locked() as idx:
+        registered=set(idx['names'].values());candidates=set()
+        for folder in ('locks','running'):
+            for p in (c.ROOT/folder).glob('*.lock'):
+                if ID_RE.fullmatch(p.stem):candidates.add(p.stem)
+        for sid in sorted(candidates):
+            session=c.ROOT/'session'/sid
+            # A directory, dangling symlink, or unexpected entry is not evidence of deletion.
+            if sid in registered:continue
+            try:session.lstat()
+            except FileNotFoundError:pass
+            else:continue
+            try:
+                with _delete_locks(sid) as held:
+                    for path,fd in held:removed+=int(_unlink_locked(path,fd))
+            except c.Failure as ex:
+                if ex.code not in ('BUSY','UNSAFE_LOCK'):raise
+                skipped.append({'sessionid':sid,'reason':ex.code})
+    return removed,skipped

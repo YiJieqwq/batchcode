@@ -50,3 +50,16 @@ Before release: run the CI matrix and clean ZIP install/uninstall/reinstall chec
 Config tests verify the removed answer-length option is no longer accepted by task/gconf/session schemas or shown in help/defaults. Installation cleanup is idempotent, backs up exact originals, preserves keys/other settings/ctx/info, handles pending transactions without resurrecting the retired setting, and refuses unsafe symlinks or invalid JSON before mutation. Fresh ZIP install/uninstall/reinstall validation is separate from mocks. Follow the actual GitHub Actions result for this revision before treating all Python versions as verified.
 
 A user-supplied independent v0.3.1 brief reports successful real DeepSeek/Tavily use and 149 offline tests. It observed greeting submissions, strict names and full-mode submissions whose bodies were not displayed—consistent with the output defect fixed here. This is external evidence for v0.3.1, not a guarantee that every v0.3.2 model call follows the new shared prompt. No v0.3.2 real API calls are performed by the offline suite; no new OpenAI live certification. The private report is not committed or packaged.
+
+
+## v0.3.3 — 2026-09-28
+
+Regression suite expanded to 208 offline/mock tests. New tests cover:
+
+- Successful deletion of both per-ID lock files without touching artifacts, same-ID locks on del ctx/conf/rename, unknown-ID no-op, and global lock inode preservation.
+- Non-creating session list/active probes, delayed subprocess openers using previously resolved IDs, stale list snapshots, and parent/child inherited management descriptors.
+- Busy management/running guards before destructive work, independent active sessions continuing while an idle session is deleted, and resumable delete transactions at directory/index/lock cleanup boundaries.
+- Installer-only orphan cleanup/idempotence; preservation of registered sessions, unindexed session directories/symlinks, busy locks, nonempty files, hardlinks, symlinks and non-generated filenames. Corrupt indexes fail closed instead of purging files; inode replacement checks refuse the replacement.
+- The answer-body-only rule appears once in the shared system prompt in both modes, with the user-requested markup/code exception. Mocks intentionally return XML/HTML and protocol-like suffix text to verify that raw parameters, output and character counts are not rewritten by a tag-stripping heuristic.
+
+Prompt assertions/mocks do not prove real-model suppression of unwanted suffixes. No v0.3.3 real provider calls or new OpenAI live certification. Run the full local suite, final ZIP install/cleanup/uninstall/reinstall checks and actual CI results before publishing this revision.

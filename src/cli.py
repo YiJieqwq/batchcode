@@ -165,8 +165,7 @@ def management(a,diag):
                 if not st.spath(sid).exists():raise c.Failure('INDEX_CORRUPT','Missing indexed directory',2)
         print(f'batchcode/status: ready, version {c.VERSION}, offline check');return
     if a.action=='list':
-        with st.index_locked() as idx:items=list(idx['names'].items())
-        states=[(name,sid,st.active(sid)) for name,sid in items]
+        states=st.list_sessions()
         for label,flag in [('Active',True),('Inactive',False)]:
             print(label+' sessions:')
             for name,sid,running in sorted(states):
@@ -191,6 +190,11 @@ def management(a,diag):
         raise
     if a.action=='fork':
         dst=st.fork_batch([(sid,a.dst,a.part)])[0];print(f'{a.dst}/status: forked, sessionid={dst}, parent_id={sid}');return
+    if a.action=='del' and a.part=='all':
+        current_name=st.delete_all(sid)
+        if current_name is None:print(f'{name}/status: not_found')
+        else:print(f'{current_name}/del: all, sessionid={sid}, session locks removed, artifacts retained')
+        return
     with st.session_locked(sid) as (s,name,fd):
         if a.action=='rename':st.rename(sid,a.dst);print(f'{a.dst}/status: renamed, sessionid={sid}');return
         if a.action=='export':
@@ -222,11 +226,9 @@ def management(a,diag):
             for k in unset:s.conf.pop(k,None)
             s.save(False);print(f'{name}/conf: saved, sessionid={sid}, fields='+','.join(sorted(set(updates)|set(unset))));return
         if a.action=='del':
-            if a.part=='all':st.delete_all(sid)
-            else:
-                if a.part=='conf':s.conf={}
-                else:s.ctx=cx.empty()
-                s.save(include_ctx=a.part=='ctx')
+            if a.part=='conf':s.conf={}
+            else:s.ctx=cx.empty()
+            s.save(include_ctx=a.part=='ctx')
             print(f'{name}/del: {a.part}, sessionid={sid}, artifacts retained');return
         if a.action in ('evt','msg'):
             before=(len(s.ctx['msgs']),len(s.ctx['events']))

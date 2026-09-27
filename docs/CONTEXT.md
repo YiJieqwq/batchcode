@@ -47,3 +47,14 @@ On normal finish, publish a complete message and execute complete tool calls. On
 Events completed before a tool side effect are saved; each tool result saved on return. Per-session transaction journal makes ctx/config/info write groups recoverable. Index has its own short, redoable mutation journal and backup. Backups are not blindly auto-applied to damaged indexes. Global index lock never spans network execution. Session/run/lifecycle locks remain outside removable session directories.
 
 This release still rewrites a ctx snapshot at completed-block checkpoints, not an append-only compressed database. Large histories can have write amplification; correctness precedes incremental storage. No future compression functionality is claimed.
+
+
+## Session-lock retirement (v0.3.3)
+
+The short index lock also gates the registered-ID check and nonblocking acquisition of per-session management/running locks. It is released before context reads, provider work or long-running execution. Acquiring a session lock while holding the index gate must NEVER wait; this avoids a session/index lock-order deadlock. Workers keep the inherited management descriptor and additionally acquire running state through the gate.
+
+`delete_all` owns the target lock acquisition itself, rather than executing inside a pre-existing session_locked context. It holds the index gate and both existing target lock FDs (without creating missing ones), checks for occupancy before creating a delete journal, commits directory removal and index deregistration, then unlinks the exact checked lock inodes. Global lock inodes remain. The journal is removed only after lock retirement; if interrupted, recovery rechecks existing locks and idempotently completes remaining work before exposing the index to new callers. Existing direct old-version journals remain redoable.
+
+A resolved ID is not a lifetime lease: an operation that resumes after deletion rechecks registration behind the gate before opening any lock. List takes a consistent short name/activity snapshot and uses non-creating probes, eliminating the former stale-list recreation path. Same-name recreation receives a new ID; old artifacts remain outside the transaction. Runtime cleanup does not require exclusive global lifecycle access, so independent active sessions can continue.
+
+Installation may additionally reclaim historical orphan per-ID locks under the exclusive lifecycle lock plus index gate. It ignores any ID still indexed or with any corresponding session entry (even an unindexed directory/symlink), skips unsafe/busy/nonempty/multilink files, and never scans artifact directories for deletion. Backups are not used as a reason to restore deleted identities. This is coordinated-program locking, not protection from an arbitrary same-UID adversary replacing the filesystem.

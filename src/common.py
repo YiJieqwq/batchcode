@@ -4,10 +4,11 @@ import datetime as dt
 import fcntl
 import json
 import os
+import stat
 from pathlib import Path
 import tempfile
 
-VERSION = '0.3.2'
+VERSION = '0.3.3'
 ROOT = Path(__file__).resolve().parents[1]
 DISPLAY_LIMIT = 24000
 
@@ -56,9 +57,13 @@ def atomic_text(path, text):
 def atomic(path,value): atomic_text(path,dumps(value)+'\n')
 
 @contextlib.contextmanager
-def lock(path, shared=False, blocking=False):
-    fd=os.open(path,os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
+def lock(path, shared=False, blocking=False, create=True):
+    flags=os.O_RDWR|os.O_NOFOLLOW|os.O_NONBLOCK
+    if create:flags|=os.O_CREAT
+    fd=os.open(path,flags,0o600)
     try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise Failure('UNSAFE_LOCK','Lock path must be a regular file',2)
         try: fcntl.flock(fd,(fcntl.LOCK_SH if shared else fcntl.LOCK_EX)|(0 if blocking else fcntl.LOCK_NB))
         except BlockingIOError: raise Failure('BUSY','Object is busy; retry after current operation finishes',3)
         yield fd

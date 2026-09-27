@@ -1,4 +1,4 @@
-# batchcode v0.3.2 agent contract
+# batchcode v0.3.3 agent contract
 
 One invocation submits tasks, waits and returns. **Collect stdout, stderr AND exit code; never `2>/dev/null`.** No prompts, pager, tool shell or recursive subprocess-launch tool.
 
@@ -31,7 +31,7 @@ Single content may use --content-stdin with a finite pipe/heredoc. Do not mix in
 ## Output
 
 `--answer=summary|full` (summary default), independently `--granularity=coarse|fine` (coarse default).
-submit_answer is always provided and required for normal final delivery in BOTH modes: when completed, unable to continue, or no task/no further action (including greetings/tests), submit at least once without unrelated file/search work. Submission does not stop generation; later important additions require a revised complete submission. Only the last valid submission THIS run is delivered; inherited submissions do not count.
+submit_answer is always provided and required for normal final delivery in BOTH modes: when completed, unable to continue, or no task/no further action (including greetings/tests), submit at least once without unrelated file/search work. The shared system prompt requires answer to contain only the actual answer body, without extra wrapper/XML/function-call/end markers; user-requested code or XML/HTML is valid body content. No regex stripping or raw-body rewriting occurs. Submission does not stop generation; later important additions require a revised complete submission. Only the last valid submission THIS run is delivered; inherited submissions do not count.
 summary = final `/answer` plus program metadata/artifacts, without intermediate visible speech.
 full = ALL visible assistant_content plus final `/answer`. It must not hide a submitted answer just because process content was printed. Neither mode normally prints reasoning or tool feedback. Fine stderr prints tool calls, not submit answer body; coarse prints `Tool call records are hidden`. Errors/warnings always visible.
 Answer length belongs in the user's task text: obey its word/character/length request; otherwise respond concisely without losing necessary qualifications. No separate answer-length target parameter, fixed default number or target in tool feedback. Each valid submit returns its own actual `chars` (Python character count including punctuation, English, spaces/newlines); no truncation or cumulative answer/submission count budget. Do not confuse this with optional API generation resource limits, which still default to unlimited locally.
@@ -81,3 +81,10 @@ File errors now distinguish FILE_NOT_FOUND / PERMISSION_DENIED / IS_A_DIRECTORY 
 ## v0.3.2 configuration cleanup
 
 After updating code or copying old v0.3.x profiles/session configs, run install.sh. Under the lifecycle lock it backs up and removes the retired answer-length field from active configuration (including pending config transactions). Only that field is removed; keys, unrelated fields, ctx, info and historical feedback are retained. Private backups stay under state/config-backup-* and are not release artifacts. No runtime alias/ignored setting remains for the retired option; stale CLI or JSON overrides fail normal validation.
+
+
+## v0.3.3 session lock retirement
+
+`session del all REF` removes the target session's two per-ID lock files after nonblocking occupancy checks and index-gated deregistration, preserving artifacts and global locks. If that session is busy, fail with exit 3 before journaling/deleting; another running session is not a reason to refuse. del ctx/conf and rename keep the current locks. List/probe is read-only with respect to running lock file creation; stale name/ID resolution cannot recreate a deleted session lock.
+
+Install also cleans historical orphan lock pairs under exclusive lifecycle locking. Only empty regular single-link `s_<uuid>.lock` files absent from both session index and session directory are eligible. It skips busy/unexpected/symlink/nonempty locks instead of unlinking blindly, never cleans artifacts or arbitrary files. No new runtime GC command. A partially failed delete keeps its transaction for redo and reports error, not success; no claim of OS-attack-proof filesystem isolation.

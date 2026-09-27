@@ -55,6 +55,7 @@ if [[ ! -e startup/selection.json ]]; then cp startup/selection.default.json sta
 chmod 700 batchcode
 find model websearch -maxdepth 1 -type f \( -name '*.txt' \) -exec chmod 600 {} +
 python3 "$BASE/src/config_upgrade.py"
+python3 "$BASE/src/lock_cleanup.py"
 ./batchcode self-check
 
 # --local skips global registration for CI/embedded deployments only.
