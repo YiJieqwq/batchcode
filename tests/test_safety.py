@@ -108,3 +108,10 @@ class SafetyTests(unittest.TestCase):
         d=c.Diagnostics()
         for _ in range(10):d.warning('EMPTY_MSG','ignored',msg_id=1)
         self.assertEqual(len(d.items),1)
+
+    def test_tiny_utf8_page_errors_not_loops(self):
+        self.cfg['max_read_bytes']=1
+        t=tools.Tools(self.cfg,None,None,self.sid)
+        (self.root/'input/x').write_text('中')
+        with self.assertRaises(c.Failure) as cm:t.execute('read_file',{'path':'input/x'})
+        self.assertEqual(cm.exception.code,'READ_PAGE_TOO_SMALL')

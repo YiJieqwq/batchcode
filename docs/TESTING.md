@@ -3,7 +3,7 @@
 ## v0.3.0 — 2026-09-27
 
 Local environment: Ubuntu 26.04.1 proot, Python 3.14.4.
-**115 offline/mock tests passed**. These are new-version tests, not a claim that the former 35 tests automatically validate the redesign.
+**119 offline/mock tests passed**. These are new-version tests, not a claim that the former 35 tests automatically validate the redesign.
 
 Coverage:
 - ctx schema/reference ownership, kind inference, field order, null/empty/missing, repeated/interleaved text, pure milestone compilation, provider field projection without mutating stored content.
@@ -18,7 +18,7 @@ Coverage:
 
 No real API credentials were used for v0.3.0. In particular, mocks cannot prove that an actual model obeys the new hello/no-exploration prompt, submits well-formed answers consistently, or has exactly the tested SSE behavior. Those require live validation. Older external reports attest prior DeepSeek/Tavily integration, not new-version OpenAI or streaming certification.
 
-The actual missing-package apt branch and arbitrary same-UID attacker races remain untested/out of scope. CI matrix Python 3.10/3.12/3.14 should be read from actual Actions results; do not assume a configured workflow has passed.
+The actual missing-package apt branch and arbitrary same-UID attacker races remain untested/out of scope. GitHub Actions passed on Python 3.10/3.12/3.14 at initial v0.3 commit 4233b67 (115 tests). The final follow-up adds four regression tests (119 local passes); consult final Actions status for that revision.
 
 ## Reproduce
 

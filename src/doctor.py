@@ -68,5 +68,3 @@ if __name__=='__main__':
         socket.getaddrinfo(sys.argv[2],443,type=socket.SOCK_STREAM)
         print(json.dumps({'status':'ok','elapsed':round(time.monotonic()-start,4)}))
     except OSError:sys.exit(1)
-
-

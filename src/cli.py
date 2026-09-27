@@ -208,8 +208,11 @@ def management(a,diag):
                 choice=s.conf.get('modelconf') or conf.selection()['default_modelconf']
                 try:base=conf.base(choice)
                 except c.Failure:base={};diag.warning('BASE_UNAVAILABLE','Base profile unavailable; showing stored overrides')
-                effective={**base,**s.conf,'modelconf':choice};fields=updates or effective
-                print(json.dumps({k:{'value':conf.safe_view({k:effective.get(k)})[k],'source':'session' if k in s.conf else 'modelconf/default'} for k in fields},ensure_ascii=False,indent=2))
+                effective={**base,**s.conf,'modelconf':choice}
+                startup_search='websearch' not in effective
+                if startup_search:effective['websearch']=conf.selection().get('default_websearch')
+                fields=updates or effective
+                print(json.dumps({k:{'value':conf.safe_view({k:effective.get(k)})[k],'source':'session' if k in s.conf else 'startup' if (k=='websearch' and startup_search) or (k=='modelconf' and k not in s.conf) else 'modelconf/default'} for k in fields},ensure_ascii=False,indent=2))
             return
         if a.action=='set':
             unset=a.unset or []
@@ -222,13 +225,15 @@ def management(a,diag):
             else:
                 if a.part=='conf':s.conf={}
                 else:s.ctx=cx.empty()
-                s.save()
+                s.save(include_ctx=a.part=='ctx')
             print(f'{name}/del: {a.part}, sessionid={sid}, artifacts retained');return
         if a.action in ('evt','msg'):
             before=(len(s.ctx['msgs']),len(s.ctx['events']))
+            original_ids={e['evt_id'] for e in s.ctx['events']}
             new,target=cx.edit(s.ctx,a.action,a.edit_action,a,s.alloc)
+            affected=([e['evt_id'] for e in new['events'] if e['evt_id'] not in original_ids] if a.edit_action=='add' else [a.evt_id] if a.action=='evt' else target['evt_ids'])
             s.ctx=new;s.save()
-            print(f'{name}/{a.action}/{a.edit_action}: msg_id={target["msg_id"]}, msgs_delta={len(new["msgs"])-before[0]}, evts_delta={len(new["events"])-before[1]}, sessionid={sid}')
+            print(f'{name}/{a.action}/{a.edit_action}: msg_id={target["msg_id"]}, evt_ids={c.dumps(affected)}, msgs_delta={len(new["msgs"])-before[0]}, evts_delta={len(new["events"])-before[1]}, sessionid={sid}')
             for m in new['msgs']:
                 if not m['evt_ids']:diag.warning('EMPTY_MSG','Message has no events; ignored during compilation',msg_id=m['msg_id'])
 
@@ -333,11 +338,14 @@ def launch(item):
                 candidate=copy.deepcopy(s.ctx);target=cx.from_native(candidate,{'role':'user','content':item['content']},s.alloc)
             # No destructive edit/truncation committed until final config+candidate compile checks pass.
             cx.compile_ctx(candidate,cfg['provider'],diag)
+            removed_msgs=len(s.ctx['msgs'])-len(candidate['msgs']);removed_evts=len(s.ctx['events'])-len(candidate['events'])
             s.ctx=candidate;s.save();mid=target['msg_id'];rid=uuid.uuid4().hex
             result.update(input_msg_id=mid,input_evt_ids=target['evt_ids'])
-            if 'rerun'in item or 'edit'in item:diag.warning('HISTORY_TRUNCATED','Suffix permanently discarded; prior file side effects are not rolled back',msg_id=mid)
-            proc=subprocess.Popen([sys.executable,str(c.ROOT/'src/worker.py')],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,pass_fds=(fd,))
-            with CHILD_LOCK:CHILDREN.add(proc)
+            if 'rerun'in item or 'edit'in item:diag.warning('HISTORY_TRUNCATED',f'Suffix permanently discarded: {removed_msgs} msgs, {removed_evts} evts; prior file side effects are not rolled back',msg_id=mid)
+            with CHILD_LOCK:
+                if CANCEL.is_set():raise c.Failure('INTERRUPTED','Batch cancelled before worker launch',4)
+                proc=subprocess.Popen([sys.executable,str(c.ROOT/'src/worker.py')],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,pass_fds=(fd,))
+                CHILDREN.add(proc)
             try:
                 out,err=proc.communicate(c.dumps({'sid':sid,'cfg':cfg,'input_mid':mid,'rid':rid}),timeout=cfg['task_timeout_seconds']+15)
             except subprocess.TimeoutExpired:

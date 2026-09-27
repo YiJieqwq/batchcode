@@ -286,3 +286,20 @@ class ProjectTests(unittest.TestCase):
     def test_57_nonstream_truncation_not_fallback(self):
         r=self.cli('task','one','--stream=false','--content=length');self.assertNotEqual(r.returncode,0);self.assertNotIn('one/answer:',r.stdout)
         self.assertFalse(any(e['kind']=='assistant_content' for e in self.ctx('one')['events']))
+
+    def test_58_display_effective_default_search(self):
+        self.cli('session','add','one')
+        r=self.cli('session','get','conf','one','--websearch')
+        self.assertEqual(json.loads(r.stdout)['websearch'],{'value':'tavily','source':'startup'})
+    def test_59_clear_conf_with_invalid_ctx(self):
+        self.cli('session','set','conf','one','--temperature=0.5')
+        self.file('one','ctx.json').write_text('{broken')
+        r=self.cli('session','del','conf','one');self.assertEqual(r.returncode,0,r.stderr)
+        self.assertEqual(self.file('one','ctx.json').read_text(),'{broken')
+        self.assertEqual(json.loads(self.file('one','config.json').read_text()),{})
+    def test_60_edit_returns_new_event_id(self):
+        self.cli('session','add','one')
+        r=self.cli('session','msg','add','one','--after_msg=0','--content=a')
+        self.assertIn('evt_ids=[1]',r.stdout)
+        r=self.cli('session','evt','add','one','--after_evt=1','--content=b')
+        self.assertIn('evt_ids=[2]',r.stdout)

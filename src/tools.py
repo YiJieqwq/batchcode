@@ -161,6 +161,8 @@ class Tools:
                     text = text[:max(0, len(text)//2)]
                     if not text: break
                 data = text.encode('utf-8')
+                if not data and offset < info.st_size:
+                    raise Failure('READ_PAGE_TOO_SMALL', 'Read/result budget cannot hold the next UTF-8 character; increase page limits')
                 return {'content': text, 'offset': offset,
                         'next_offset': offset + len(data), 'truncated': offset + len(data) < info.st_size}
             finally:

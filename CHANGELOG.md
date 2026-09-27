@@ -12,7 +12,7 @@
 - Default model/tool/context/output quotas 0, task timeout 1800s, retained per-step guards. Startup model/search selection separate from configuration.
 - Dynamic tool availability and unavailable-search notice, no transcript redaction/role duplication, no source mutation on model switch.
 - Recoverable index/session transactions, lifecycle install/uninstall locks, file-spooled terminal output and local batch-failure isolation.
-- 115 offline/mock tests; live new-version provider validation still required.
+- 119 offline/mock tests; live new-version provider validation still required.
 
 
 ## 0.2.2 — 2026-09-27
