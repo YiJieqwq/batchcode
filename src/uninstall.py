@@ -12,6 +12,12 @@ def uninstall(root, candidates):
     root = root.resolve()
     descriptors=[]
     try:
+        (root/'locks').mkdir(exist_ok=True)
+        lifecycle=os.open(root/'locks/lifecycle.lock',os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW,0o600)
+        descriptors.append(lifecycle)
+        try:fcntl.flock(lifecycle,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except BlockingIOError:
+            print('[uninstall=failed code=BUSY] Installation has active commands.',file=sys.stderr);return 3
         # Acquire all existing management and running locks before making changes.
         # Caller must stop new invocations; this is not an OS-wide lifecycle transaction.
         for folder in ('locks','running'):
@@ -19,6 +25,7 @@ def uninstall(root, candidates):
             if directory.is_symlink():raise ValueError('Refusing symlinked lock directory')
             if not directory.exists():continue
             for path in sorted(directory.glob('*.lock')):
+                if path.name=='lifecycle.lock': continue
                 fd=os.open(path,os.O_RDWR|os.O_NOFOLLOW)
                 descriptors.append(fd)
                 try:fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)

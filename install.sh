@@ -40,16 +40,21 @@ if ((${#need[@]})); then
   [[ "$before" == "$after" ]] || { echo '[install=failed] coreutils version changed unexpectedly.' >&2; exit 2; }
 fi
 python3 -c 'import sys; assert sys.version_info >= (3,10), "Python >=3.10 required"'
+# Acquire exclusive lifecycle lock in system Python, then invoke internal phase once.
+if [[ ${BATCHCODE_INSTALL_LOCKED:-} != 1 ]]; then
+  exec python3 "$BASE/src/lifecycle_install.py" "$@"
+fi
 # No pip or third-party dependencies. --without-pip avoids unnecessary downloads.
 if [[ -L .venv ]]; then echo '[install=failed] .venv may not be a symlink.' >&2; exit 2; fi
 if [[ ! -x .venv/bin/python ]] || ! .venv/bin/python -c 'import sys,ssl,fcntl; assert sys.version_info >= (3,10)' >/dev/null 2>&1 || [[ ! -f .venv/.install-path ]] || [[ $(cat .venv/.install-path) != "$BASE" ]]; then
   python3 -m venv --without-pip --clear .venv
   printf '%s' "$BASE" > .venv/.install-path
 fi
-if [[ ! -e config.json ]]; then cp config.default.json config.json; fi
+mkdir -p startup locks
+if [[ ! -e startup/selection.json ]]; then cp startup/selection.default.json startup/selection.json; fi
 chmod 700 batchcode
 find model websearch -maxdepth 1 -type f \( -name '*.txt' \) -exec chmod 600 {} +
-./batchcode op self-check
+./batchcode self-check
 
 # --local skips global registration for CI/embedded deployments only.
 if [[ ${1:-} != --local ]]; then
@@ -81,6 +86,6 @@ if [[ ${1:-} != --local ]]; then
   mv -f "$tmp" "$target"
   hash -r
   [[ $(command -v batchcode) == "$target" ]]
-  batchcode op self-check
+  batchcode self-check
 fi
 printf '%s\n' '[install=ready] Fill API keys in model/deepseek-flash.txt and websearch/tavily.txt. See README.md.'

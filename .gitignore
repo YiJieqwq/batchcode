@@ -13,3 +13,8 @@ websearch/*.txt
 !websearch/tavily.txt
 # Tracked defaults must NEVER contain real keys. Release tooling checks them.
 dist/
+
+session/
+state/
+session_index.json
+startup/selection.json

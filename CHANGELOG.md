@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.0 — 2026-09-27 (breaking)
+
+- Object-first task/gconf/session CLI; remove op/sconf and old flags. No old storage migration.
+- Immutable session IDs, authoritative name index, separate ctx/config/info, rename without moving artifacts.
+- Shallow msgs/events context, provider compiler, located critical/warning diagnostics, pure UTC user milestones.
+- User-only evt/msg editing, explicit drop-suffix, rerun, blank-message handling and tool-pair insertion guards.
+- Default summary via revisable submit_answer (not an immediate stop), full visible-content option and independent stderr granularity; last-content fallback with IDs, historical submissions excluded.
+- Stream assembly, complete-block persistence, partial-block discard, interrupted nonstream content not used as answer.
+- Named profiles own complete runtime defaults; explicit task settings persist to session, frozen tmpconf, optional final key completion, no provider routing.
+- Default model/tool/context/output quotas 0, task timeout 1800s, retained per-step guards. Startup model/search selection separate from configuration.
+- Dynamic tool availability and unavailable-search notice, no transcript redaction/role duplication, no source mutation on model switch.
+- Recoverable index/session transactions, lifecycle install/uninstall locks, file-spooled terminal output and local batch-failure isolation.
+- 115 offline/mock tests; live new-version provider validation still required.
+
+
 ## 0.2.2 — 2026-09-27
 
 - Add conservative uninstall.sh: remove only exact matching PATH launchers and private .venv; preserve all user data and source. Busy lock checks, idempotence, symlink rejection. No system package removal.

@@ -1,42 +1,30 @@
-# Test status
+# Validation status
 
-## v0.2.0 local author validation — 2026-09-27
+## v0.3.0 — 2026-09-27
 
-Environment: Ubuntu 26.04.1 proot, Python 3.14.4.
-24 offline/mock HTTP unittest cases passed. Includes actual subprocess overlap (both sessions visible Active simultaneously), batch mixed failures, fork snapshots, configuration overrides/unset/model switch, active-vs-management lock distinction, full visible message retention, fine/coarse separation, source/write isolation, HTTP error detail persistence, timeout/resume and incomplete tool-history repair.
-Install/register through PATH and local repeat/move installation verified. ZIP fresh-install validation is performed by release packaging checks.
-No real API calls were made for v0.2.0. No real keys used or distributed.
+Local environment: Ubuntu 26.04.1 proot, Python 3.14.4.
+**115 offline/mock tests passed**. These are new-version tests, not a claim that the former 35 tests automatically validate the redesign.
 
-The default ProcessPoolExecutor was unsuitable in the current proot due to unavailable system semaphore support. Final implementation uses bounded parent threads to supervise independent Python subprocesses, with JSON pipes and no shared-memory semaphore requirement.
+Coverage:
+- ctx schema/reference ownership, kind inference, field order, null/empty/missing, repeated/interleaved text, pure milestone compilation, provider field projection without mutating stored content.
+- tool pairing and insertion rejection through both evt/msg paths, including multi-tool feedbacks; raw query despite broken references; oversize display refusal and export.
+- user edit, empty-msg fill/ignore, prepend sentinel, granular drop-suffix, rerun identity/time preservation, failed preflight leaving context intact.
+- stable name/ID mapping, same-object batch detection, rename, fork modes/shared snapshots, recreate new ID with old artifacts retained, transaction redo and high-water gaps.
+- actual subprocess concurrent overlap and Active listing; mixed task failures isolated; parent termination; frozen config; explicit task parameters persisted; global empty key completed by session; no automatic routing.
+- summary revisions, invalid resubmit preserving valid answer, no hard summary length policy, no historical submit reuse, failure after submission, full visible content, final fallback and numbered diagnostics.
+- SSE fragmentation, complete text vs partial tool args, stream disconnect, nonstream truncation not fallback; no per-token events.
+- key-shaped strings preserved; path/symlink/hardlink/FIFO/UTF-8 page boundaries; tool availability enforcement; lifecycle busy uninstall and repeat/move install.
+- localhost DNS diagnostic executes without key/API calls or changing resolv.conf; no external network needed for regression tests.
 
-## Earlier external validation (v0.1.0)
+No real API credentials were used for v0.3.0. In particular, mocks cannot prove that an actual model obeys the new hello/no-exploration prompt, submits well-formed answers consistently, or has exactly the tested SSE behavior. Those require live validation. Older external reports attest prior DeepSeek/Tavily integration, not new-version OpenAI or streaming certification.
 
-The user supplied an independent-container report: 18 offline tests and 12 real DeepSeek/Tavily scenarios passed (conversation, continuation, file read/write, search/extract, delete, errors, timeout/resume, locks). This report is evidence for the older protocol foundation, **not a live-service certification of the new v0.2 CLI or OpenAI service**. Raw session logs and credentials are deliberately not committed.
+The actual missing-package apt branch and arbitrary same-UID attacker races remain untested/out of scope. CI matrix Python 3.10/3.12/3.14 should be read from actual Actions results; do not assume a configured workflow has passed.
 
-## Remaining coverage
-
-- Real v0.2 DeepSeek/Tavily and OpenAI API integration.
-- apt branch on a system actually missing Python/venv/CA.
-- Python 3.10/3.12 on CI (configured; consult actual Actions result).
-- Cost/rate-limit variability, minutes-long provider stalls and hard host termination.
-- Dedicated prompt-injection adversarial tests and OS-level isolation (not provided).
-- Shared-directory local attacker races are outside the tool-only threat model.
-
-Run tests:
+## Reproduce
 
 ```bash
 python3 -m unittest discover -s tests -v
+python3 scripts/package.py
 ```
 
-Mock credentials are fixed fake strings. No live test in CI; never add API secrets to fixtures.
-
-## v0.2.1 — 2026-09-27
-
-31 offline/mock tests passed on current Python 3.14 proot, including bounded DNS-probe timeout, DNS summary, profile host-only selection without keys, parameter validation/auto omission and layered request-body overrides.
-Explicit real DNS diagnostic (2 samples/host) observed DeepSeek 5.9481/5.2657 seconds and Tavily 5.4713/5.3203 seconds; warning exit 1 as designed, no resolver changes or paid API calls. This establishes slow system name resolution here, not the precise underlying network cause.
-No v0.2.1 live model API integration. Enabling DS thinking changes runtime behavior relative to the previously live-tested non-thinking profile. Release fresh install verified separately.
-The user-supplied v0.2.0 external report describes 24 offline tests plus successful real DeepSeek/Tavily scenarios (not OpenAI); report scenario-count headings are inconsistent, so no exact live-test count is asserted here.
-
-## v0.2.2
-
-35 offline/mock tests passed. Uninstall tests cover repeated removal, data retention, foreign launcher preservation, active management locks and symlinked venv rejection. Fresh ZIP local install → uninstall → repeated uninstall → reinstall passed in a temporary directory. Main working installation was not uninstalled. No new paid API integration tests.
+Release ZIP is checked separately by extraction into a fresh directory, local install, CLI/schema smoke, uninstall and reinstall. Package builder refuses nonempty keys in public profiles and excludes session data/venv/private test reports/DNS repair. Runtime startup/selection.json is generated only if absent. Current 0.2.x data is not converted or removed.

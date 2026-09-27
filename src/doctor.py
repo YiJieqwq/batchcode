@@ -7,7 +7,8 @@ import subprocess
 import sys
 import time
 import urllib.parse
-import engine as e
+import common as e
+import configuration as conf
 
 def probe(host,timeout):
     start=time.monotonic()
@@ -36,31 +37,28 @@ def hosts_for(args,cfg):
         filename=name if name.endswith('.txt') else name+'.txt'
         path=e.ROOT/folder/filename
         if path.is_symlink():raise e.Failure('INVALID_CONFIG_NAME','No profile symlinks',2)
-        obj=e.load_json(path)
+        obj=e.load(path)
         for field in (('url','extract_url') if folder=='websearch' else ('url',)):
-            e.endpoint(obj.get(field),cfg)
+            conf.endpoint(obj.get(field),cfg['allow_http_endpoints'])
             host=urllib.parse.urlsplit(obj[field]).hostname
             if host not in hosts:hosts.append(host)
     return hosts
 
-def run(args,cfg):
-    if not 1<=args.samples<=10 or not math.isfinite(args.timeout) or not 0.1<=args.timeout<=30:
-        raise e.Failure('INVALID_ARGUMENT','samples must be 1–10, timeout 0.1–30 seconds per probe',2)
+def run_new(args):
+    selection=conf.selection()
+    args.model=args.modelconf or selection['default_modelconf']
+    obj=e.load(conf.profile_path(args.model))
+    cfg={'default_model':args.model,'websearch':selection.get('default_websearch'),'allow_http_endpoints':obj.get('allow_http_endpoints',False)}
+    # Diagnostics use endpoint strings only, never check credentials or call APIs.
+    if not 1<=args.samples<=10 or not math.isfinite(args.timeout) or not .1<=args.timeout<=30:
+        raise e.Failure('INVALID_ARGUMENT','samples 1–10; timeout .1–30',2)
     hosts=hosts_for(args,cfg)
-    records=[{'host':host,**summarize([probe(host,args.timeout) for _ in range(args.samples)])} for host in hosts]
-    code=1 if any(r['status']!='ok' for r in records) else 0
-    report={'mode':'read-only','checks':'system DNS only','status':'warning' if code else 'ok','hosts':records,
-            'notes':['No system configuration changed. No API requests or keys sent.',
-                     'Uses the system resolver (including hosts/NSS/cache). Speed is not proof of answer correctness.',
-                     'Median >=1s is a heuristic warning, not a diagnosis. HTTPS/proxy/provider latency is not tested.']}
-    if args.json:print(json.dumps(report,ensure_ascii=False,indent=2))
-    else:
-        print('doctor/status: '+report['status']+', read-only system DNS')
-        for r in records:
-            timings=', '.join(f"{s['status']} {s['elapsed']:.3f}s" for s in r['samples'])
-            print(f"doctor/host/{r['host']}: {timings}; status={r['status']}")
-        for note in report['notes']:print('doctor/note: '+note)
-    if code:print('DNS failed or appears slow/intermittent; inspect container/host resolver and VPN configuration. Nothing was changed.',file=sys.stderr)
+    records=[{'host':h,**summarize([probe(h,args.timeout) for _ in range(args.samples)])} for h in hosts]
+    code=int(any(r['status']!='ok' for r in records))
+    print('[critical 0, warning '+str(code)+']',file=sys.stderr)
+    report={'mode':'read-only','status':'warning' if code else 'ok','checks':'system DNS only','hosts':records}
+    print(json.dumps(report,ensure_ascii=False,indent=2) if args.json else '\n'.join(f"doctor/{r['host']}: {r['status']}, median={r['median_seconds']}s" for r in records))
+    if code:print('warning/DNS: Slow/failed system resolution; no DNS or system configuration was changed.',file=sys.stderr)
     return code
 
 if __name__=='__main__':
@@ -70,3 +68,5 @@ if __name__=='__main__':
         socket.getaddrinfo(sys.argv[2],443,type=socket.SOCK_STREAM)
         print(json.dumps({'status':'ok','elapsed':round(time.monotonic()-start,4)}))
     except OSError:sys.exit(1)
+
+

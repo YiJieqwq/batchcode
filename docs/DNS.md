@@ -1,9 +1,13 @@
-# 容器 DNS 排障
+# Read-only container DNS diagnosis
 
-harness 的搜索/对话联网与容器内 Python 网络不一定使用同一路径。外部 v0.2.0 测试报告观测到：不可达解析器排列在前、无本地缓存导致每次解析额外等待约 5–8 秒；修复测试容器后同 prompt 任务从 66.7 秒降到 13.7 秒。任务路径可能变化，这不是固定五倍性能承诺，也不是 token/费用翻倍证据。
+```bash
+batchcode doctor --modelconf=deepseek-flash --websearch=tavily
+batchcode doctor --samples=1 --timeout=3
+batchcode doctor --json
+```
 
-使用 `batchcode op doctor --websearch=tavily` 在容器内部采样系统解析。只测选择的模型/搜索域名，不带密钥、无付费请求、不改网络。调用前请确认这些配置域名允许交给系统 DNS 解析。系统 hosts、NSS、缓存可能参与结果，不保证真的产生外部 DNS 查询。默认全局搜索关闭，所以显式加 websearch 才检测 Tavily。
+Explicit invocation only. The system resolver is measured in bounded subprocesses for selected API hostnames; no API auth or paid requests, no public resolver ranking, no /etc/resolv.conf modification and no repair script. Default samples 3, per sample timeout 10s. Slow/unreliable sample warning returns 1; valid fast samples 0; bad arguments/config 2. Critical/warning header precedes stderr diagnostics.
 
-诊断慢时，检查当前 resolver、容器宿主是否重写 resolv.conf、VPN 分流/DNS 劫持、网络丢包。不要只因超过 0.2 秒就更改系统，也不要仅凭一次 UDP 应答选择公共 DNS。局域网/企业 DNS 不能随意替换，更多 nameserver 也不一定意味着更多有效冗余。
+harness networking and container networking may differ. External v0.2.0 report found unreachable resolvers first in resolv.conf, 5–8s repeated DNS delays; same prompt observed 66.7s →13.7s after separately repairing the environment. This is an observed workload comparison, not a fixed 5x speed guarantee or token-cost multiplier. Current v0.3 tests don't repair/retest your internet resolver.
 
-工具返回 ok 只代表这次样本解析表现，不证明答案无污染、目标 HTTPS 可达或任务一定快。没有自动修复、备份或还原功能；独立修复工具由用户自行维护。安装器与普通 task 不会自动运行 doctor。
+Slow threshold (median at least 1s) is heuristic; >0.2s isn't automatically a fault. Fast answers are not proof of correctness (pollution/interception can be fast). hosts/NSS/cache may participate. Doctor does not test HTTPS, proxy paths, rate limits or generation latency. DNS repair remains a separate user-maintained tool. Never replace corporate/split-horizon DNS automatically.

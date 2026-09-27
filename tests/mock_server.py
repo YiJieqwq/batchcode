@@ -1,60 +1,64 @@
 from http.server import BaseHTTPRequestHandler
-import json,time
-class MockHandler(BaseHTTPRequestHandler):
-    requests = []
-    def log_message(self, *args):
-        pass
-    def do_POST(self):
-        body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
-        self.server.requests.append((self.path, body, self.headers.get('Authorization')))
-        if self.path == '/fail':
-            self.send_response(401); self.end_headers(); self.wfile.write(b'sk-secret-do-not-echo'); return
-        if self.path == '/bad':
-            self.send_response(200); self.end_headers(); self.wfile.write(b'bad json'); return
-        if self.path == '/redirect':
-            self.send_response(307); self.send_header('Location', '/chat'); self.end_headers(); return
-        if self.path == '/slow':
-            time.sleep(2)
-        if self.path == '/slow' and 'messages' not in body:
-            result = {'results': []}
-        elif self.path == '/search':
-            result = {'answer': '摘要', 'results': [{'url': 'https://93.184.216.34/article', 'content': '摘要正文'}]}
-        elif self.path == '/extract':
-            result = {'results': [{'url': body['urls'][0], 'raw_content': '网页完整正文'}], 'failed_results': []}
-        else:
-            msg = body['messages']
-            task = next(x['content'] for x in reversed(msg) if x['role'] == 'user')
-            start = max(i for i, x in enumerate(msg) if x['role'] == 'user')
-            tools = [x for x in msg[start:] if x['role'] == 'tool']
-            calls = []
-            content = 'FINAL_OK'
-            if task == 'readwrite' and not tools:
-                calls = [('read_file', {'path': str(self.server.root / 'input/doc.md')})]
-                content = 'VISIBLE_PROGRESS'
-            elif task == 'readwrite' and len(tools) == 1:
-                calls = [('write_file', {'path': 'report.md', 'content': '报告内容'})]
-            elif task == 'web' and not tools:
-                calls = [('web_search', {'query': 'test query'})]
-            elif task == 'web' and len(tools) == 1:
-                calls = [('fetch_url', {'url': 'https://93.184.216.34/article'})]
-            elif task == 'loop':
-                calls = [('list_directory', {'path': str(self.server.root / 'input')})]
-            elif task == 'deny' and not tools:
-                calls = [('write_file', {'path': '../outside.md', 'content': 'bad'})]
-            elif task == 'secret':
-                content = 'sk-mock-secret'
-            elif task == 'history':
-                content = 'HISTORY_OK' if any(x.get('content') == 'FINAL_OK' for x in msg) else 'NO_HISTORY'
-            message = {'role': 'assistant', 'content': content}
-            if calls:
-                message['tool_calls'] = [{'id': 'call_' + str(len(msg)) + '_' + str(i), 'type': 'function',
-                    'function': {'name': n, 'arguments': json.dumps(a)}} for i, (n, a) in enumerate(calls)]
-                message['reasoning_content'] = 'private-reasoning-not-for-stdout'
-            result = {'choices': [{'message': message, 'finish_reason': 'length' if task == 'length' else ('tool_calls' if calls else 'stop')}],
-                      'usage': {'prompt_tokens': 10, 'completion_tokens': 5}}
-        data = json.dumps(result).encode()
-        try:
-            self.send_response(200); self.send_header('Content-Type', 'application/json'); self.send_header('Content-Length', str(len(data))); self.end_headers(); self.wfile.write(data)
-        except (BrokenPipeError, ConnectionResetError):
-            pass
+import json
+import time
 
+class Handler(BaseHTTPRequestHandler):
+    def log_message(self,*args):pass
+    def send_obj(self,body,status=200):
+        data=json.dumps(body).encode();self.send_response(status);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
+    def do_POST(self):
+        try:self.work()
+        except (BrokenPipeError,ConnectionResetError):pass
+    def work(self):
+        body=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+        self.server.requests.append((self.path,body,self.headers.get('Authorization')))
+        if self.path=='/401':self.send_obj({'error':'private-key-must-not-print'},401);return
+        if self.path=='/search':self.send_obj({'results':[{'url':'https://93.184.216.34','content':'search text'}]});return
+        if self.path=='/extract':self.send_obj({'results':[{'url':body['urls'][0],'raw_content':'full text'}],'failed_results':[]});return
+        if self.path=='/slow':time.sleep(2)
+        msgs=body['messages'];start=max(i for i,m in enumerate(msgs) if m['role']=='user');task=msgs[start]['content'].split('\n',1)[-1]
+        tools=[m for m in msgs[start:] if m['role']=='tool'];n=len(tools)
+        def call(name,args):return {'id':f'c{len(msgs)}','type':'function','function':{'name':name,'arguments':json.dumps(args,ensure_ascii=False)}}
+        calls=[];text='Hello';finish='stop'
+        if task in ('readwrite','report'):
+            if n==0:text='VISIBLE_PROGRESS';calls=[call('read_file',{'path':str(self.server.root/'input/doc.md')})]
+            elif n==1:text='UPPER_HALF';calls=[call('write_file',{'path':'report.md','content':'完整报告 sk-example'})]
+            elif n==2:text='LOWER_HALF';calls=[call('submit_answer',{'answer':'FINAL_SUBMISSION'})]
+            else:text='GOODBYE'
+        elif task=='revise':
+            if n<2:text='STEP'+str(n);calls=[call('submit_answer',{'answer':'FIRST' if n==0 else 'REVISED '+('长'*800)})]
+            else:text='CLOSING'
+        elif task=='invalid_submit':
+            if n==0:text='first';calls=[call('submit_answer',{'answer':'VALID'})]
+            elif n==1:text='bad';calls=[call('submit_answer',{'answer':''})]
+            else:text='closing'
+        elif task=='failafter':
+            if n==0:text='work';calls=[call('submit_answer',{'answer':'BEFORE_ERROR'})]
+            else:self.send_obj({'error':'upstream'},503);return
+        elif task=='web':
+            if n==0:text='searching';calls=[call('web_search',{'query':'test'})]
+            elif n==1:text='reading';calls=[call('fetch_url',{'url':'https://93.184.216.34/'})]
+            else:text='sources';calls=[call('submit_answer',{'answer':'WEB_DONE'})] if n==2 else []
+        elif task=='loop':text='loop';calls=[call('list_directory',{'path':str(self.server.root/'input')})]
+        elif task=='history':text='HISTORY_OK' if any(m.get('content')=='GOODBYE' for m in msgs) else 'NO_HISTORY'
+        elif task=='secret':text='sk-example tvly-example'
+        elif task=='length':text='truncated';finish='length'
+        elif task=='tools':text=','.join(t['function']['name'] for t in body['tools'])
+        if calls:finish='tool_calls'
+        raw={'role':'assistant','content':text}
+        if calls:raw['tool_calls']=calls;raw['reasoning_content']='PRIVATE_REASONING'
+        if not body.get('stream'):
+            self.send_obj({'choices':[{'index':0,'message':raw,'finish_reason':finish}],'usage':{'prompt_tokens':5,'completion_tokens':5}});return
+        self.send_response(200);self.send_header('Content-Type','text/event-stream');self.end_headers()
+        def event(obj):self.wfile.write(('data: '+json.dumps(obj,ensure_ascii=False)+'\n\n').encode());self.wfile.flush()
+        def delta(d,reason=None):event({'choices':[{'index':0,'delta':d,'finish_reason':reason}]})
+        delta({'role':'assistant'})
+        delta({'content':text[:len(text)//2]});delta({'content':text[len(text)//2:]})
+        for idx,tc in enumerate(calls):
+            arg=tc['function']['arguments'];cut=len(arg)//2
+            delta({'tool_calls':[{'index':idx,'id':tc['id'],'type':'function','function':{'name':tc['function']['name'],'arguments':arg[:cut]}}]})
+            delta({'tool_calls':[{'index':idx,'function':{'arguments':arg[cut:]}}]})
+        if calls:delta({'reasoning_content':'PRIVATE_REASONING'})
+        if task=='streambreak':return
+        delta({},finish);event({'choices':[],'usage':{'prompt_tokens':5,'completion_tokens':5}})
+        self.wfile.write(b'data: [DONE]\n\n');self.wfile.flush()

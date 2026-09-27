@@ -1,0 +1,4 @@
+{
+  "default_modelconf": "deepseek-flash",
+  "default_websearch": "tavily"
+}

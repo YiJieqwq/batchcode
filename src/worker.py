@@ -1,7 +1,10 @@
-"""Internal JSON pipe endpoint; never load credentials from task input."""
+"""Internal subprocess endpoint. stdout carries a short result-file reference, not transcript bodies."""
 import json
 import sys
-from cli import worker
+import common as c
+from runner import execute
 if __name__=='__main__':
     data=json.load(sys.stdin)
-    print(json.dumps(worker(data['item'],data['cfg']),ensure_ascii=False))
+    with c.lock(c.ROOT/'locks/lifecycle.lock',shared=True),c.lock(c.ROOT/'running'/(data['sid']+'.lock')):
+        r=execute(data['sid'],data['cfg'],data['input_mid'],data['rid'])
+        print(c.dumps({'result_file':str(c.ROOT/'session'/data['sid']/'runs'/(r['run_id']+'.json'))}))

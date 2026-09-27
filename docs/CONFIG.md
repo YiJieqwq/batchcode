@@ -1,65 +1,68 @@
-# Configuration, providers and security
+# Configuration and security
 
-Installation `config.default.json` is a public template. install.sh copies it to runtime `config.json` only when absent. Runtime config is gitignored. Paths resolve relative to the installation, not current directory.
+## Sources
 
-| Setting | Default | Meaning |
+startup/selection.json selects defaults only (deepseek-flash / tavily). Model JSON .txt contains API and runtime defaults. Per-session config.json contains explicit overrides only, info.json contains non-secret audit and counters, no name. Input overrides persist first, snapshot then merges from chosen modelconf; validation uses final snapshot, so session key may complete base profile's empty key. No automatic model routing.
+
+`gconf add/set/get/del NAME`; add reads complete JSON via --heredoc; set accepts any declared field as `--field-name=value` (underscore alias supported), get uses valueless field filters. No arbitrary dict accepted as API params beyond extra_body; unknown config fields fail. Set/unset conflict fails before change. gconf del refuses currently selected or directly session-referenced profile.
+
+`session set conf REF` allows the same fields except parallel, plus modelconf. `task` supports these and batch parallel. Explicit task fields persist to sconf, including API overrides; passing secrets through CLI may appear in shell history/process arguments, prefer a private profile or session add --heredoc. Config get masks api_key; ctx get/export preserves raw.
+
+Unset removes a stored override so it inherits. Missing optional field = inherit; optional API null = omit; reasoning_effort/thinking auto = omit field (not literal provider value); numeric 0 remains real. Other runtime fields require valid typed values. False is not missing. No global defaults copied into sconf.
+
+## Defaults and CLI fields
+
+| Field | Default | Meaning |
 |---|---|---|
-| default_model | deepseek-flash | profile filename without .txt |
-| websearch | null | no network tools by default |
-| granularity | coarse | tool summaries hidden; all visible model messages retained |
-| parallel | 2 | workers per invocation, 1–32 |
-| read_roots | ../inbox, ./sub_workspace | permitted read trees |
-| deny_read_paths | [] | additional deny paths |
-| task_timeout_seconds | 240 | worker model/tool deadline |
-| request_timeout_seconds | 90 | HTTP socket timeout |
-| max_model_calls | 16 | model rounds/task |
-| max_tool_calls | 40 | tool calls/task |
-| max_output_tokens | 4096 | per model response |
-| max_context_chars | 180000 | serialized message character budget, not tokens |
-| max_read_bytes | 65536 | read page limit, also constrained by tool result budget |
-| max_tool_result_chars | 24000 | oversized results explicitly excerpted |
-| max_write_bytes | 262144 | one UTF-8 file write |
-| max_http_response_bytes | 4194304 | HTTP response body cap |
-| max_directory_entries | 200 | listing page size |
-| http_retries | 1 | additional attempts for network/429/5xx |
-| extract_depth | basic | Tavily basic/advanced |
-| fetch_timeout_seconds | 30 | Tavily server extraction timeout, 1–60 |
-| allow_http_endpoints | false | mock-only opt-in; production use HTTPS |
+| url/model/api_key | DS endpoint / deepseek-flash / empty | connection credentials; no key included in release |
+| provider | auto (bundled DS profile explicitly deepseek) | deepseek/openai/auto; auto identifies official DS host, else Chat Completions OpenAI adapter |
+| thinking/reasoning_effort | enabled/auto | provider-dependent; auto omits API field |
+| temperature/top_p | 1/1 | optional; ranges 0–2 / 0–1 |
+| presence_penalty/frequency_penalty | absent | optional -2–2; DS may ignore/not support |
+| answer/granularity | summary/coarse | independent stdout policy / stderr trace |
+| summary_chars | 200 | suggestion and submitted feedback only, 0=no length suggestion |
+| stream | true | SSE API response processing (terminal still buffered) |
+| parallel | 2 | per invocation pool limit, 1–32, not per-session |
+| task_timeout_seconds | 1800 | task-level deadline; external exec deadline may be earlier |
+| request_timeout_seconds | 90 | socket request timeout |
+| max_model_calls/max_tool_calls/max_context_chars/max_output_tokens | 0 | positive opt-in budgets; 0 bypasses local check/omits API token limit |
+| max_read_bytes | 65536 | file page ceiling; actual text also bounded by result budget, valid UTF-8 boundary |
+| max_tool_result_chars | 24000 | data feedback budget, explicit excerpts for oversized web data |
+| max_write_bytes | 262144 | one file write safety cap |
+| max_http_response_bytes | 16777216 | whole single response/stream byte cap, explicit failure not summary truncation |
+| max_directory_entries | 200 | listing page |
+| http_retries | 1 | connection/429/5xx; no midstream replay |
+| read_roots | ../inbox, ./sub_workspace | approved source trees, relative to installation |
+| deny_read_paths | [] | extra deny paths |
+| extract_depth/fetch_timeout_seconds | basic/30 | Tavily depth/1–60s service extraction timeout |
+| allow_http_endpoints | false | controlled local test only; HTTPS default |
+| extra_body | {} | vendor fields, cannot override model/messages/tools/stream/auth/n; token caps normalized from max_output_tokens |
+| websearch | absent | inherit startup choice; explicit null/none disables |
 
-Task timeout is best effort, not a strict wall-clock bound: process startup, cleanup and OS I/O may add latency. Batch queue wait is outside an individual worker's timeout. No cross-process total concurrency quota, disk quota or automatic history compaction.
+parallel's default is taken from the batch's first explicit modelconf if provided, otherwise startup's default modelconf. A missing batch-default file falls back to scheduling size 2 only; task model resolution still errors rather than routes to another model. Per-task model choices cannot create separate worker pools.
 
-## Providers
+`max_tool_calls` counts ordinary tool execution, not submit_answer; successful submissions have no separate number/token limit. No imposed input budget piggybacked on a 0 context budget. Large stdin is read as text; RAM still finite, so use approved files and artifacts rather than giant command arguments. No local quota means no guarantee of unlimited provider context/output or memory.
 
-Model JSON requires `url`, `model`, `api_key`; optional `extra_body` adds provider parameters. URLs are full Chat Completions endpoints; no automatic suffix guessing. JSON duplicate keys are rejected. DeepSeek profile enables thinking by default with effort=auto (omit effort field). When thinking is enabled, reasoning fields are persisted/replayed as required by that provider but never terminal-printed. Changing config names strips provider reasoning fields; changing the contents of an existing profile is an administrator operation, not tracked as a model migration.
+The default profile uses actual explicit values; editing DEFAULTS in code is not configuration management. Full gconf may intentionally fix its own defaults. task scalar overrides are persisted even if final validation/API fails; destructive rerun/edit+rerun waits for valid target/config/compile preflight before cutting history.
 
-OpenAI profile example (requires API account access to the chosen model; not ChatGPT web subscription):
+## OpenAI profile
 
-```json
-{"url":"https://api.openai.com/v1/chat/completions","model":"gpt-4.1-mini","api_key":""}
+```bash
+batchcode gconf add openai --heredoc <<'JSON'
+{"url":"https://api.openai.com/v1/chat/completions","provider":"openai","model":"gpt-4.1-mini","api_key":""}
+JSON
 ```
 
-Official DeepSeek endpoints use `max_tokens`, others `max_completion_tokens`. Other compatible services may need adaptation; no Responses API or MCP support. Additional parameters may override output budget if explicitly configured by the administrator; no arbitrary messages/tools/model/auth overrides permitted.
+Requires a tool-capable API model/account, not ChatGPT website subscription. Only text Chat Completions is currently compiled. Tool calls, reasoning replay, nulls and fragments tested with mocks, actual provider behavior requires live integration. No Responses/Anthropic/multimodal compiler in this release.
 
-Tavily uses Search + Extract with separate bodies and Bearer authorization. The configured search flags do not leak into Extract calls. Both successful results and failed_results are passed to the model. Search excerpts are not equivalent to having read a full page.
+## Boundaries
 
-## Boundary
+No shell tool; exec_command deferred. write_file uses anchored directory descriptors/O_NOFOLLOW/atomic replace, can write only sub_workspace/<ID>. Relative names, no traversal or directory symlinks. Replacing a hardlink doesn't modify external target. Absolute artifact paths are program-generated. Session rename never moves them. Fork copies references, not files; del/rerun doesn't undo filesystem effects.
 
-write_file is code-enforced, not prompt-enforced: directory FDs + O_NOFOLLOW, no `..`/absolute path, atomic replace prevents changing a preexisting external hardlink target. All tool writes stay under `sub_workspace/<session>`. Program-owned config/session/log writes are separate. No shell tools.
+File reads resolve/check approved paths and use no-follow traversal. model, websearch, session, state, startup, source, logs/locks, virtualenv, index and common credentials paths forbidden. Do not put secret copies/hardlinks in approved input trees. This is tool confinement, NOT protection from arbitrary same-UID OS processes renaming directories or modifying code. Cross-session outputs can be read if under approved shared output root; writes are isolated.
 
-Reads resolve real paths and enforce allowed roots plus fixed deny areas, with no-follow component opens. Profiles, logs, sessions, source, virtualenv, hidden paths and common key extensions are denied. Keep approved input trees free of secret copies/hardlinks: no filename filter can identify every secret. Avoid widening read_roots to `/` or an entire personal workspace.
+HTTP redirects rejected to protect Authorization headers. HTTP error response bodies not printed. API auth never enters messages. Bodies and stored content are NOT regex-redacted; user-pasted secrets stay raw and may already have left the device. Config/info views do not intentionally print api_key. Signed/private URLs must not be sent to Tavily. Fetch checks public addresses locally but the actual crawl is remote; cannot guarantee third-party redirect/DNS behavior. Not an internal network security gateway.
 
-This is **not OS-level sandboxing** against other same-UID processes or an administrator replacing program files/directories. Session branches isolate history and writes, not read access to all shared outputs. Malicious local processes racing filesystem topology are outside the threat model.
+JSON/profile write defaults mode 600, private directories 700. Logs contain diagnostic metadata and references, not another authoritative full transcript. Atomic replacement and journals improve interruption recovery, not disk secure erase. state/output-* spools are ephemeral; SIGKILL/host termination may leave them behind. No total disk quota or OS sandbox is provided.
 
-API calls use HTTPS by default and reject redirects to avoid moving Authorization credentials to another host. HTTP status/retry counts are stored on failures; raw error responses are deliberately not printed. Tool API failures preserve structured detail in tool history/events. Logs and history may contain private task content; protect them even though keys are redacted.
-
-fetch_url rejects obvious nonpublic hosts/IPs, credentials and nonstandard ports before sending a URL to Tavily. Actual crawling occurs at Tavily: local checks cannot guarantee third-party redirect or DNS-rebinding behavior. Not an internal-network gateway. Never send sensitive signed URLs.
-
-Instructional defenses mark source content untrusted, but do not constitute proof against prompt injection. No dedicated adversarial benchmark has been passed.
-
-## References
-
-- https://api-docs.deepseek.com/quick_start/pricing
-- https://api-docs.deepseek.com/guides/thinking_mode
-- https://platform.openai.com/docs/api-reference/chat/create
-- https://docs.tavily.com/documentation/api-reference/endpoint/search
-- https://docs.tavily.com/documentation/api-reference/endpoint/extract
+Lifecycle locks serialize installation/uninstallation against commands; installer-generated self-check runs under installer lock. One shared installation may be used by multiple CLI invocations, each with its own concurrency limit. Cooperative SIGINT/SIGTERM cancels active workers/queued tasks; hard kill cannot guarantee cleanup. Don't blindly retry a tool with an unknown interrupted side effect—inspect artifacts or rerun explicitly.
