@@ -1,12 +1,14 @@
 # batchcode
 
-**一次调用，多个代理。** 面向终端用户和 AI agent 的轻量任务 CLI：会话分支与并发、可编辑上下文、provider 请求编译、明确的最终答案提交。
+**English** | [中文](README.zh-CN.md)
 
-**当前版本：v0.3.3**（沿用 v0.3.x 会话存储；安装时清理废弃配置，不兼容 0.2.x CLI／会话格式）。Python 3.10+ 标准库，无 pip 第三方依赖；支持 Debian/Ubuntu（含 proot），不支持原生 Termux 或 Windows。
+**One call, many agents.** A lightweight task CLI for terminal users and AI agents: session branching and concurrency, editable context, provider request compilation, and explicit final-answer submission.
 
-## 安装
+**Current version: v0.3.3** (keeps v0.3.x session storage; the install step cleans up deprecated configuration and is not compatible with the 0.2.x CLI/session format). Python 3.10+ standard library only, with no third-party pip dependencies; supports Debian/Ubuntu (including proot), and does not support native Termux or Windows.
 
-从 [Releases](https://github.com/YiJieqwq/batchcode/releases) 下载 ZIP：
+## Installation
+
+Download the ZIP from [Releases](https://github.com/YiJieqwq/batchcode/releases):
 
 ```bash
 unzip batchcode-v0.3.3.zip
@@ -14,126 +16,126 @@ cd batchcode
 bash install.sh
 ```
 
-或克隆仓库后运行安装脚本。安装器准备本地 `.venv`、注册 PATH 命令、执行离线自检；不用手动激活 venv。只安装必要系统依赖，不执行 upgrade，拒绝涉及 coreutils 的包事务。注册 PATH 需要可写且已在 PATH 的 `/usr/local/bin` 或 `~/.local/bin`；无权限明确失败，不等密码。嵌入/测试可以 `bash install.sh --local`。
+Or clone the repository and run the install script. The installer prepares a local `.venv`, registers the PATH command, and runs an offline self-check; you never activate the venv by hand. It installs only the necessary system dependencies, never runs an upgrade, and refuses package transactions that involve coreutils. Registering the PATH entry requires a writable `/usr/local/bin` or `~/.local/bin` that is already on PATH; without permission it fails explicitly rather than waiting for a password. Embedded or test use can run `bash install.sh --local`.
 
-填写两个 **JSON 格式的 `.txt` 文件**的 `api_key`：
+Fill in `api_key` in two **JSON-format `.txt` files**:
 
 ```text
 model/deepseek-flash.txt
 websearch/tavily.txt
 ```
 
-搜索没 key 不妨碍模型运行：缺失搜索工具不会注入 schema，但子代理会收到动态提示 `web_search is temporarily unavailable`。模型必须在**合并后的有效配置**中有 key；绝不自动换模型/服务商。这里只检查本地调用条件，非空 key 不保证远端鉴权成功。
+A missing search key does not stop the model from running: when the search tool is unavailable its schema is not injected, but sub-agents receive the dynamic hint `web_search is temporarily unavailable`. The model must have a key in the **merged effective configuration**; the model or provider is never switched automatically. This only checks local call conditions — a non-empty key does not guarantee that remote authentication will succeed.
 
-> 不要把 ZIP 覆盖解压到已填密钥的目录。安装脚本保留密钥和自定义设置，但解压器可能覆盖同名 `.txt`。本版本不迁移 0.2.x 会话、不删除旧数据。请在新目录安装；默认 profile 是公开空 key 样板，填 key 后不要提交到 Git。
+> Do not unzip the ZIP over a directory whose keys are already filled in. The install script preserves keys and custom settings, but an unzip tool may overwrite same-named `.txt` files. This version does not migrate 0.2.x sessions and does not delete old data. Install into a new directory; the default profile is a public sample with an empty key, so do not commit to Git after filling in your key.
 
-### 从旧 v0.3.x 更新
+### Updating from an older v0.3.x
 
-不需要转换 ctx。准备好新版代码、保留或迁入自己的模型与会话配置后，运行 `bash install.sh`：安装器在持有生命周期锁时，**先备份再清除已废弃的答案长度配置字段**，不动密钥、其他字段、原始 ctx 或历史审计。备份位于私有 `state/config-backup-*/`，含原配置内容，勿上传；重复安装不会反复改写已清理的文件。若迁入旧配置发生在安装后，再运行一次安装脚本。
+No ctx conversion is needed. Prepare the new code, keep or migrate your own model and session configuration, then run `bash install.sh`: while holding the lifecycle lock, the installer **backs up first and then removes the deprecated answer-length configuration fields**, leaving keys, other fields, the original ctx, and the historical audit untouched. Backups live in the private `state/config-backup-*/` and contain the original configuration — do not upload them. Re-running the installer will not repeatedly rewrite an already cleaned file. If you migrate an old configuration after installing, run the install script once more.
 
-这是删除旧字段，不是继续提供一个兼容参数；CLI、当前配置视图、请求提示词和新提交反馈中不再提供答案长度目标。已有历史工具反馈保持原样，不为了升级篡改旧对话。
+This deletes the old field rather than continuing to offer a compatibility parameter; answer-length targets are no longer exposed in the CLI, the current configuration view, request prompts, or new submission feedback. Existing historical tool feedback stays as it is — old conversations are not rewritten for the sake of an upgrade.
 
-安装器还会在独占生命周期锁期间清理旧版本留下的**孤儿会话锁**：只删除 ID 已不在索引、且 `session/<id>` 也不存在的空常规锁文件。只处理生成的 ID 文件名；全局锁、现存会话锁、成果目录保留。忙锁、符号链接、硬链接或非空／异常文件跳过并提示，不当作垃圾强删。重复安装安全。
+During the exclusive lifecycle lock the installer also cleans up **orphan session locks** left by older versions: it only deletes empty regular lock files whose ID is no longer in the index and for which `session/<id>` does not exist either. Only generated ID filenames are handled; the global lock, locks of existing sessions, and artifact directories are preserved. Busy locks, symlinks, hard links, and non-empty or otherwise unusual files are skipped with a notice rather than force-deleted as garbage. Re-running the installer is safe.
 
-## 一次调用完成任务
+## Finishing a Task in One Call
 
 ```bash
-batchcode task --name=调研 --content="总结 /workspace/inbox/文档.md"
-batchcode task 调研 --content="核实结论并附来源"
+batchcode task --name=research --content="Summarise /workspace/inbox/doc.md"
+batchcode task research --content="Verify the conclusion and cite sources"
 
 batchcode task --parallel=2 \
-  --task='{"name":"技术","content":"分析技术可行性"}' \
-  --task='{"name":"成本","content":"分析成本与风险"}'
+  --task='{"name":"tech","content":"Analyse technical feasibility"}' \
+  --task='{"name":"cost","content":"Analyse cost and risk"}'
 
 batchcode task --tasks-stdin <<'JSON'
 [
-  {"name":"支持论据","fork_from":"调研","content":"检查支持证据"},
-  {"name":"反方核查","fork_from":"调研","content":"检查反面证据"}
+  {"name":"supporting-evidence","fork_from":"research","content":"Check the supporting evidence"},
+  {"name":"counter-check","fork_from":"research","content":"Check the counter-evidence"}
 ]
 JSON
 ```
 
-**位置参数只引用已有会话，写错名称或 ID 直接报 `NOT_FOUND`，绝不自动创建或近似匹配。** 不填引用才新建：可用 `--name=名称` 同步命名，省略 name 则自动生成显示名。
+**A positional argument only references an existing session; a wrong name or ID reports `NOT_FOUND` directly and never auto-creates or fuzzy-matches.** A new session is created only when no reference is given: use `--name=<name>` to name it synchronously, or omit `name` to have a display name generated automatically.
 
 ```bash
-# 新建并命名（重名报错，不会偷偷续聊）
-batchcode task --name=调研 --content="第一轮任务"
-# 引用已有会话，继续任务
-batchcode task 调研 --content="继续核实"
-# 引用已有会话，同时重命名
-batchcode task 调研 --name=文献调研 --content="继续核实"
-# ID 也能引用；输出依然用映射得到的名称
-batchcode task s_0123456789abcdef0123456789abcdef --name=新名称 --content="继续"
+# Create and name (a duplicate name is an error — it will not silently continue another session)
+batchcode task --name=research --content="First-round task"
+# Reference an existing session and continue the task
+batchcode task research --content="Continue verifying"
+# Reference an existing session and rename it at the same time
+batchcode task research --name=literature-review --content="Continue verifying"
+# An ID also works as a reference; output still uses the mapped name
+batchcode task s_0123456789abcdef0123456789abcdef --name=new-name --content="Continue"
 ```
 
-`--name` 不是配置项，不进入 sconf 或 info.json。重命名只改索引，ID、历史和成果路径保持；重名、会话忙或运行预检失败时不改名。通过预检后先改名再运行，远端 API 失败不会撤回已成功的改名。改为自己的现有名称是 no-op。`task rerun REF --name=新名称 --msg_id=N` 也支持同样规则。
+`--name` is not a configuration item and does not enter sconf or info.json. A rename only updates the index; the ID, history, and artifact paths stay as they are. On a duplicate name, a busy session, or a failed run pre-check, the rename does not happen. Once the pre-check passes, the rename happens before the run; a remote API failure does not roll back a rename that already succeeded. Renaming a session to its own current name is a no-op. `task rerun REF --name=<new-name> --msg_id=N` follows the same rules.
 
-批量对象的 `session` 只用于已有引用，`name` 用于新建命名或续聊重命名。不要把批次共用 `--name` 加在命令上，应在每个对象里写 name。`fork_from` 是显式新建分支：省略 session、用 name 指定新分支名，不再把 session 当目标名称。
+In batch objects, `session` is only for referencing an existing session while `name` is for naming a new one or renaming while continuing. Do not put a batch-wide `--name` on the command; write `name` inside each object. `fork_from` is an explicit new branch: omit `session` and use `name` to give the new branch its name — the session is no longer treated as the target name.
 
-所有已有引用都接受 **name 或生成的 sessionid**（例如 `s_` 加 32 位十六进制 UUID）。显式 `session add NAME` 和 `session fork ... NEWNAME` 仍可新建，目标不可自指定 ID。
+Every existing reference accepts either a **name or a generated sessionid** (for example `s_` followed by a 32-hex-digit UUID). Explicit `session add NAME` and `session fork ... NEWNAME` can still create sessions, but a target cannot specify its own ID.
 
-同源批量 fork 取同一快照；不同会话并发，同会话必须串行。name 与 ID 指向同一个会话时也判为重复。批次中局部配置/执行失败不会取消其他独立任务；输入结构或批次重复 ID 错误在执行前拒绝。
+Batch forks from the same source take a single snapshot; different sessions run concurrently while the same session must run serially. A name and an ID pointing at the same session also count as a duplicate. A local configuration or execution failure inside a batch does not cancel other independent tasks; input-structure errors or duplicate batch IDs are rejected before execution.
 
-## 输出：答案与轨迹是两条轴
+## Output: Answers and Traces Are Two Axes
 
 ```bash
-batchcode task 调研 --answer=summary --granularity=fine --content="查阅材料"
+batchcode task research --answer=summary --granularity=fine --content="Review the material"
 ```
 
-**`submit_answer` 在两种回答模式里都常驻，交付要求相同**：任务完成、已无法完成且无后续操作，或没有任务且无后续操作时，至少提交一次，包括问候／测试；不得为提交而执行无关文件／搜索操作。允许反复修订，最终以本次运行最后一次有效提交为准，提交后继续正常收尾。
+**`submit_answer` is always available in both answer modes, with the same delivery requirement**: when the task is done, can no longer be completed with no further action, or there is no task and no further action, it must be submitted at least once — greetings and tests included; unrelated file or search operations must not be performed merely to submit. Repeated revision is allowed, and the last valid submission in the run is the one that counts; after submitting, the run wraps up normally.
 
-共用系统指令要求 **`answer` 字段只放答案正文本身，不额外附加包裹标签、XML 包装、函数调用式标记或调用结束标记**。用户明确要求的 XML／HTML／代码属于答案正文，仍允许输出。程序不对答案做正则剥标签或改写，原文查询与字符计数保持真实；提示词约束不能保证模型永不违背。
+The shared system instruction requires that the **`answer` field contain only the answer body itself**, without extra wrapper tags, XML wrapping, function-call-style markers, or end-of-call markers. XML/HTML/code explicitly requested by the user is part of the answer body and is still allowed. The program does not strip tags from the answer with regular expressions or rewrite it, so raw-text queries and character counts stay truthful; prompt constraints cannot guarantee that a model never violates them.
 
-- **`--answer=summary`（默认）**：stdout 只显示最终 `/answer` 和程序状态／成果，不回灌中间可见发言。
-- **`--answer=full`**：stdout 显示本次全部可见 `assistant_content`，**然后同样显示最终 `/answer`**。它不是“只展示过程却藏起已提交的答案”。不输出 reasoning 或工具反馈正文；显式 ctx 查询可以查看原始事件。
-- **答案长度在任务正文里交代**：例如 `--content="请用三句话总结……"`。用户没提字数或篇幅时，让子代理自行简短回答，保留必要信息。程序没有额外的答案长度目标参数，不硬截断、不限制累计提交长度。
-- 每次提交反馈包含实际 `chars`（Python 字符计数，含标点、英文、空格与换行），**没有目标长度字段**。由模型结合用户正文要求决定是否修订；程序不解析用户正文来制造另一条隐藏上限。
-- **`--granularity=coarse`（默认）**：stderr 不显示工具调用摘要，提示 `Tool call records are hidden`。
-- **`--granularity=fine`**：stderr 显示调用摘要（submit 参数正文仍隐藏）；工具反馈正文不显示。
-- 本轮没有有效提交，两种模式都用 `/answer` 标记兜底的**本轮最后一条完整 content**（full 中也保留其原 `/evt`），stderr 提示 `NO_SUBMISSION` 和本轮 evt 起止 ID。这是模型漏交时的异常兜底，不再把问候设计为常规兜底路径；不靠程序语义分类判失败。提示词不保证模型永不漏交，因此 warning 保留。历史/fork 继承的 submit 不计本轮。
-- 错误和 warning 始终输出。已有答案不能掩盖超时/失败；状态和退出码照实返回。
+- **`--answer=summary` (default)**: stdout shows only the final `/answer` plus program status/artifacts, and does not echo intermediate visible statements back.
+- **`--answer=full`**: stdout shows every visible `assistant_content` from the run, **and then shows the final `/answer` as well**. It is not "show only the process while hiding the submitted answer". Reasoning and tool-feedback bodies are not printed; an explicit ctx query can inspect the raw events.
+- **Answer length is specified in the task body**: for example `--content="Summarise in three sentences ..."`. When the user does not mention a word or length target, sub-agents are left to answer briefly on their own while keeping the necessary information. The program has no separate answer-length target parameter, does not hard-truncate, and does not cap cumulative submission length.
+- Every submission feedback includes the actual `chars` (Python character count, including punctuation, English, spaces, and newlines), **with no target-length field**. The model decides whether to revise based on the user's body text; the program does not parse the user's text to manufacture a second hidden limit.
+- **`--granularity=coarse` (default)**: stderr shows no tool-call summaries and reports `Tool call records are hidden`.
+- **`--granularity=fine`**: stderr shows call summaries (submit argument bodies are still hidden); tool-feedback bodies are not shown.
+- If the run has no valid submission, both modes fall back to the **last complete content of the run**, marked with `/answer` (in `full` its original `/evt` is kept too), and stderr reports `NO_SUBMISSION` along with the run's evt start/end IDs. This is an exceptional fallback for when the model forgets to submit, and greetings are no longer designed as a routine fallback path; the program does not semantically classify and declare failure. Prompts cannot guarantee that a model never forgets to submit, so the warning remains. Submissions inherited from history/forks do not count for the current run.
+- Errors and warnings are always printed. An existing answer cannot mask a timeout or failure; status and exit codes are returned as they are.
 
-示例 stdout：
+Example stdout:
 
 ```text
 [task 2/2 done, max_elapsed 7.3s]
 
-调研/status: completed, sessionid=s_..., elapsed 7.3s, submitted=true
-调研/input: msg_id=7, evt_id=19
-调研/answer: 结论……必要限制与来源……
-调研/artifact: /安装目录/sub_workspace/s_.../report.md
+research/status: completed, sessionid=s_..., elapsed 7.3s, submitted=true
+research/input: msg_id=7, evt_id=19
+research/answer: Conclusion ... necessary limits and sources ...
+research/artifact: /install-dir/sub_workspace/s_.../report.md
 
-核查/status: completed, sessionid=s_..., elapsed 6.2s, submitted=false
-核查/input: msg_id=1, evt_id=1
-核查/answer: 直接回复……
+verify/status: completed, sessionid=s_..., elapsed 6.2s, submitted=false
+verify/input: msg_id=1, evt_id=1
+verify/answer: A direct reply ...
 ```
 
-`full` 还会在 `/answer` 前保留过程与收尾，例如：
+`full` also keeps the process and the closing remarks before `/answer`, for example:
 
 ```text
-调研/evt/20: 我先读取指定材料。
-调研/evt/26: 已完成核对。
-调研/answer: 最终提交的结论……
+research/evt/20: I will read the specified material first.
+research/evt/26: Verification complete.
+research/answer: The final submitted conclusion ...
 ```
 
-即使最后一条可见发言只是“已完成”，`/answer` 仍来自最后一次有效提交，而不是把收尾当答案。提交之后发生超时／失败时，已有答案仍可返回，但状态不会伪装成功。
+Even when the last visible statement is just "done", `/answer` still comes from the last valid submission rather than treating the closing remark as the answer. If a timeout or failure happens after submission, the existing answer can still be returned, but the status will not be dressed up as success.
 
-示例 stderr：
+Example stderr:
 
 ```text
 [critical 0, warning 1]
-warning/NO_SUBMISSION: session=核查 Returned last complete content; evt_start=1, evt_end=2
+warning/NO_SUBMISSION: session=verify Returned last complete content; evt_start=1, evt_end=2
 [tool feedbacks are hidden in stderr]
-调研/evt/21: read_file: {"path":"/workspace/inbox/文档.md"}
+research/evt/21: read_file: {"path":"/workspace/inbox/doc.md"}
 ```
 
-**输出前缀使用会话 name，不使用长 ID**，即使输入用 ID，答案和工具轨迹仍以当前 name 定位。诊断中的会话定位也显示 name；状态行保留一次稳定 sessionid，列表和 info 仍能查 ID。
+**Output prefixes use the session name, not the long ID**: even when the input uses an ID, answers and tool traces are still located by the current name. Session location in diagnostics also shows the name; the status line keeps one stable sessionid, and IDs remain visible in list and info.
 
-**必须收集 stdout、stderr 和退出码，禁止 `2>/dev/null`。** 模型文字可能仿冒状态头，不要靠全文关键词判断成功。`done` 是结束数，不是成功数；`max_elapsed` 是最大单任务耗时，排队等待不算其中。模型的事实准确性不由 `completed` 保证。
+**You must collect stdout, stderr, and the exit code; `2>/dev/null` is forbidden.** Model text can imitate status headers, so do not judge success by keywords across the whole output. `done` is a completion count, not a success count; `max_elapsed` is the longest single-task duration and does not include queue waiting. The factual accuracy of the model is not guaranteed by `completed`.
 
-结果在任务结束后按提交顺序汇总，不是实时终端流。完整输出通过本地临时文件交付，避免父/子进程管道复制全部正文。API 流式处理与终端输出粒度相互独立。
+Results are summarised in submission order after the tasks finish, not as a live terminal stream. Full output is delivered through a local temporary file, so parent and child processes do not copy all bodies through pipes. API streaming and terminal output granularity are independent of each other.
 
-## 配置：gconf 默认值 + 会话覆盖
+## Configuration: gconf Defaults + Session Overrides
 
 ```bash
 batchcode gconf get deepseek-flash
@@ -148,101 +150,101 @@ batchcode gconf add research --heredoc <<'JSON'
 JSON
 batchcode gconf del research
 
-batchcode session set conf 调研 --modelconf=deepseek-flash --temperature=0.6
-batchcode session set conf 调研 --unset=temperature
-batchcode session get conf 调研 --temperature --modelconf
+batchcode session set conf research --modelconf=deepseek-flash --temperature=0.6
+batchcode session set conf research --unset=temperature
+batchcode session get conf research --temperature --modelconf
 ```
 
-- `modelconf` 始终是配置名称；`model` 始终是服务端模型 ID。
-- 每份 `model/*.txt` 同时提供连接、采样和运行默认值；`add --heredoc` 读取完整 JSON，补齐可选默认值，已存在拒绝覆盖。需要 url/model/api_key 字段，但 api_key 可为空。
-- **task 显式参数写回该会话 conf**，不再是一次性临时设置。只保存显式覆盖，不固化继承值。批次共用设置写各会话，逐任务设置优先；parallel 仅为批次参数，不写每个会话。
-- 运行流程：显式参数覆盖 sconf → 根据 modelconf 复制 gconf 到内存 tmpconf → sconf 存在的字段逐项覆盖 → 检查最终 tmpconf → 本次快照固定。之后修改 gconf 不改变在跑任务。
-- 基础 gconf 缺 key，但会话覆盖补齐可运行；stderr 会提示基础缺 key。最终配置仍缺 key 则失败，不自动路由。
-- 普通配置查看隐藏 api_key，**ctx/工具参数/反馈/成果原文不做正则脱敏**；鉴权头从不注入对话。
-- `get --temperature` 是筛选字段，不接受 `--temperature=...` 赋值。
-- 删除仍被启动选择器或会话直接引用的 gconf 会拒绝；先解除引用。
+- `modelconf` is always the configuration name; `model` is always the server-side model ID.
+- Each `model/*.txt` provides connection, sampling, and runtime defaults at the same time; `add --heredoc` reads complete JSON, fills in optional defaults, and refuses to overwrite an existing entry. The url/model/api_key fields are required, but api_key may be empty.
+- **Explicit `task` parameters are written back to that session's conf** and are no longer one-off temporary settings. Only explicit overrides are stored; inherited values are not frozen in. Batch-wide settings are written to each session, with per-task settings taking precedence; `parallel` is a batch-only parameter and is not written to individual sessions.
+- Run flow: explicit parameters override sconf → gconf is copied into an in-memory tmpconf based on modelconf → fields present in sconf override item by item → the final tmpconf is checked → this run's snapshot is fixed. Changing gconf afterwards does not affect a running task.
+- If the base gconf lacks a key but a session override supplies it, the task can still run; stderr reports the missing key in the base. If the final configuration still lacks a key, the task fails, with no automatic routing.
+- Normal configuration views hide api_key, while **ctx, tool arguments, feedback, and artifact bodies are not redacted with regular expressions**; auth headers are never injected into the conversation.
+- `get --temperature` is a field filter and does not accept an assignment such as `--temperature=...`.
+- Deleting a gconf that is still directly referenced by the startup selector or a session is refused; remove the reference first.
 
-默认选择文件独立为 `startup/selection.json`，首次安装从 `selection.default.json` 生成：
+The default selection file is a separate `startup/selection.json`, generated from `selection.default.json` on first install:
 
 ```json
 {"default_modelconf":"deepseek-flash","default_websearch":"tavily"}
 ```
 
-它只保存“默认选谁”，不是另一套运行参数。可直接编辑该文件。显式选择/会话选择优先，模型配置没指定 websearch 才继承这里；`--websearch=none` 或 JSON null 明确关闭。工具集合和不可用说明按本轮快照动态注入，不永久写入历史。
+It only stores "who is selected by default", not another set of runtime parameters. You can edit the file directly. An explicit or session-level selection takes precedence; a model configuration inherits from here only when it does not specify websearch; `--websearch=none` or JSON `null` turns it off explicitly. The tool set and unavailable-tool notes are injected dynamically per run snapshot and are not permanently written into history.
 
-完整参数表见 [CONFIG.md](docs/CONFIG.md)。四项默认配额为 **0 = 不主动限制**，总任务超时默认 **1800 秒**，单步网络/大小保护保留。外层 exec 更短时仍会提前中断。DeepSeek 默认思考开启、effort=auto（省略 API 字段）、temperature/top_p=1；参数是否被模型采用取决于模式。
+The full parameter table is in [CONFIG.md](docs/CONFIG.md). The four default quotas are **0 = no proactive limit**, the total task timeout defaults to **1800 seconds**, and per-step network/size protections remain. A shorter outer `exec` still interrupts earlier. DeepSeek defaults to thinking enabled, effort=auto (the API field is omitted), and temperature/top_p=1; whether a parameter is adopted depends on the model mode.
 
-## 会话管理：明确操作目标
+## Session Management: Explicit Targets
 
 ```bash
-batchcode session add 调研
-batchcode session add 复核 --heredoc <<'JSON'
+batchcode session add research
+batchcode session add review --heredoc <<'JSON'
 {"modelconf":"deepseek-flash","temperature":0.6}
 JSON
 batchcode session list
-batchcode session get info 调研
-batchcode session get conf 调研
-batchcode session get ctx 调研 --evt_start=5 --evt_end=10
-batchcode session get ctx 调研 --msg_start=2 --msg_end=5
-batchcode session get ctx 调研 --evt_id=5
-batchcode session get ctx 调研 --msg_id=2
-batchcode session export ctx 调研 /workspace/outbox/research.ctx.json
-batchcode session rename 调研 文献调研
-batchcode session fork ctx 文献调研 分支A
-batchcode session fork conf 文献调研 分支B
-batchcode session fork all 文献调研 分支C
-batchcode session del ctx 分支A
-batchcode session del conf 分支B
-batchcode session del all 分支C
+batchcode session get info research
+batchcode session get conf research
+batchcode session get ctx research --evt_start=5 --evt_end=10
+batchcode session get ctx research --msg_start=2 --msg_end=5
+batchcode session get ctx research --evt_id=5
+batchcode session get ctx research --msg_id=2
+batchcode session export ctx research /workspace/outbox/research.ctx.json
+batchcode session rename research literature-review
+batchcode session fork ctx literature-review branch-a
+batchcode session fork conf literature-review branch-b
+batchcode session fork all literature-review branch-c
+batchcode session del ctx branch-a
+batchcode session del conf branch-b
+batchcode session del all branch-c
 ```
 
-查询范围是 **ID 而非数组位置**。按 evt 返回事件落盘原文，按 msg 返回组织记录和引用的事件原文。显示超过 24000 字符**整次拒绝**（stdout 不输出半份数据），提示缩小范围或 export。无筛选的 get ctx 返回原文件；即使编译失败，仍可查/导出。export 默认拒绝覆盖已有文件。
+Query ranges are **IDs, not array positions**. Queries by evt return the raw on-disk text of the events; queries by msg return the organisational record plus the raw text of the events it references. A display that would exceed 24,000 characters **is refused as a whole** (stdout emits no partial data), with a hint to narrow the range or export. An unfiltered `get ctx` returns the original file; even if compilation fails, the ctx can still be queried and exported. `export` refuses to overwrite an existing file by default.
 
-显式引用必须已存在；`task REF`、`session set conf REF`、get/export 等引用错误直接报错，不新建。创建使用省略引用的 task（可选 --name）、`session add` 或显式 fork。`session del ctx/conf/all` 不存在仍为幂等 no-op。fork 来源必须存在、目标必须新建。
+An explicit reference must already exist: `task REF`, `session set conf REF`, get/export, and so on report an error on a bad reference and never create anything. Creation uses a reference-less task (optionally with `--name`), `session add`, or an explicit fork. `session del ctx/conf/all` on a non-existent session is still an idempotent no-op. A fork source must exist and the fork target must be new.
 
-`info.json` **没有 name**，名称唯一真相为 `session_index.json`。实际路径、锁、parent_id 都用不可变 ID。rename 只更新索引，不移动目录，不改历史；同名删除重建获得新 ID，旧成果不会被覆盖。list 展示名称及 ID，Active 依据运行锁，不把配置管理锁算运行。
+`info.json` **has no name**; the single source of truth for names is `session_index.json`. Actual paths, locks, and parent_id all use immutable IDs. A rename only updates the index — it does not move directories or change history; deleting and re-creating a session with the same name yields a new ID, and old artifacts are not overwritten. `list` shows names along with IDs; `Active` is based on run locks and does not count configuration-management locks as running.
 
-**删除 ctx 只是清空历史，不删除会话身份，也不使它无法运行**：仍出现在 session list，可以用同一 name／ID 接收新任务。删除 ctx 保留配置及编号高水位；删除 conf 清空覆盖；删除 all 删除会话记录、运行审计，但保留成果。fork 不复制旧日志和成果。删除不是 provider 侧撤回或磁盘安全擦除。
+**Deleting ctx only clears history; it does not remove the session's identity or make it unrunnable**: the session still appears in `session list` and can accept new tasks under the same name/ID. Deleting ctx keeps the configuration and the numbering high-water mark; deleting conf clears overrides; deleting all removes the session record and run audit but keeps artifacts. A fork does not copy old logs or artifacts. Deletion is not a provider-side retraction or a secure disk erase.
 
-`session del all` 成功后也会移除 `locks/<sessionid>.lock` 和 `running/<sessionid>.lock`，不再永久留下两个空文件。删除只拒绝**目标会话**正在运行或被管理操作占用的情况，不要求其他会话停下。`del ctx/conf`、rename 不清理这两份锁。
+After a successful `session del all`, `locks/<sessionid>.lock` and `running/<sessionid>.lock` are removed as well, so two empty files are no longer left behind forever. Deletion only refuses when the **target session** is running or held by a management operation; it does not require other sessions to stop. `del ctx/conf` and rename do not clean up those two locks.
 
-锁文件创建／检查与删除通过同一索引锁协调，删除过程中保有目标锁、注销 ID，再移除对应锁文件；过期 ID 不会重新建锁。`session list` 的运行状态探测不创建文件。删除中断的事务会在下次索引操作时恢复；文件系统错误导致部分删除时不会报成功，需排障后重试。全局 `index.lock`、`lifecycle.lock`、`profiles.lock` 不删除。
+Lock-file creation/checking and deletion are coordinated through the same index lock: during deletion the target lock is held, the ID is deregistered, and then the corresponding lock files are removed; a stale ID does not re-create a lock. `session list`'s run-state probe does not create files. An interrupted deletion is recovered on the next index operation; if a filesystem error causes a partial deletion, success is not reported and you must troubleshoot and retry. The global `index.lock`, `lifecycle.lock`, and `profiles.lock` are never deleted.
 
-## 历史编辑与 rerun
+## History Editing and rerun
 
 ```bash
-batchcode session evt edit 调研 --evt_id=19 --content="修改的输入"
-batchcode session evt del 调研 --evt_id=19
-batchcode session evt add 调研 --after_evt=19 --content="补充条件"
-batchcode session evt add 调研 --after_msg=7 --content="加到这条 user msg 末尾"
-batchcode session msg add 调研 --after_msg=0 --content="插入开头"
-batchcode session msg add 调研 --after_msg=7
-batchcode session msg del 调研 --msg_id=7 --drop-suffix
+batchcode session evt edit research --evt_id=19 --content="Edited input"
+batchcode session evt del research --evt_id=19
+batchcode session evt add research --after_evt=19 --content="Additional condition"
+batchcode session evt add research --after_msg=7 --content="Append to this user msg"
+batchcode session msg add research --after_msg=0 --content="Insert at the beginning"
+batchcode session msg add research --after_msg=7
+batchcode session msg del research --msg_id=7 --drop-suffix
 
-batchcode task rerun 调研 --evt_id=19
-batchcode task rerun 调研 --msg_id=7
-batchcode session evt edit 调研 --evt_id=19 --content="改完再跑" --rerun --drop-suffix
+batchcode task rerun research --evt_id=19
+batchcode task rerun research --msg_id=7
+batchcode session evt edit research --evt_id=19 --content="Edit, then run" --rerun --drop-suffix
 ```
 
-- 局部编辑只允许 user 消息；msg 不提供 edit。编辑只改所指内容和该 evt timestamp，不猜测语义连贯性、不修补旧回答。
-- add 不接受 drop-suffix。evt edit 带 drop-suffix 保留修改后的目标，丢掉其后逻辑内容（含同 msg 后续 evt）；evt del 删除目标及其后；msg del 删除目标 msg 及其后。
-- edit --rerun **必须显式 --drop-suffix**，缺少则修改前报错。单独 --drop-suffix 只编辑/截断，不自动调用模型。
-- rerun 定位已存在 user，保留整条输入及此前、永久丢掉其后上下文，再交 provider。它**不能修改 timestamp**，发生重跑的时间另记在运行信息中。检查失败不截断；开始执行后即使 API 失败也不恢复旧后文。
-- 文件/其他工具副作用不回滚。需要保留原分支先 fork。
-- 新 evt/msg ID 始终递增、不重编号；逻辑顺序由 msgs 数组及 evt_ids 决定，历史插入可以形成 `[10,81,11]`，不能按数字排序编译。
-- `msg add --after_msg=0` 的 0 只表示最前面，不是真实 ID。未传 content 可建立空 msg；仍可按 ID 查询/继续填入。编译忽略空 msg，stderr 提示一次。删光最后 evt 同样允许。
-- 非 user evt 只有在所属 msg 末尾才能用作插入锚点；下一有效 msg 为 user 时插其开头，否则建立 user msg；末尾可追加。`evt add --after_msg` 则始终追加到所选 user/空 msg 的末尾。
-- **assistant 工具请求到全部 tool 反馈之间不能插入**，多个反馈之间也不行。按逻辑顺序跳过空 msg 检查调用 ID 配对，非法位置写入前拒绝。空 tool_calls null/[] 不算待反馈请求。
+- Local edits are only allowed on user messages; msg offers no edit. An edit changes only the content it points at and that evt's timestamp; it does not guess semantic coherence and does not patch old answers.
+- `add` does not accept drop-suffix. `evt edit` with drop-suffix keeps the edited target and discards the logical content after it (including later evts in the same msg); `evt del` deletes the target and everything after it; `msg del` deletes the target msg and everything after it.
+- `edit --rerun` **requires an explicit `--drop-suffix`** and errors before modifying anything if it is missing. `--drop-suffix` on its own only edits/truncates and does not call the model automatically.
+- `rerun` targets an existing user message, keeps the entire input and everything before it, permanently discards the following context, and then hands it to the provider. It **cannot change the timestamp**; the time at which the rerun happened is recorded separately in the run information. A failed check does not truncate; once execution has begun, a later API failure does not restore the old tail.
+- File and other tool side effects are not rolled back. Fork first if you need to keep the original branch.
+- New evt/msg IDs always increase and are never renumbered; logical order is determined by the msgs array and evt_ids, so a history insertion can produce `[10,81,11]` and must not be compiled by numeric sort.
+- The `0` in `msg add --after_msg=0` only means "at the very beginning" and is not a real ID. Omitting content creates an empty msg, which can still be queried by ID or filled in later. Compilation ignores empty msgs and reports it once on stderr. Deleting every last evt is likewise allowed.
+- A non-user evt can only be used as an insertion anchor at the end of the msg it belongs to; if the next valid msg is a user msg, the insertion goes to its beginning, otherwise a user msg is created; the tail can be appended to. `evt add --after_msg`, by contrast, always appends to the end of the selected user/empty msg.
+- **Nothing can be inserted between an assistant tool request and all of its tool feedbacks**, nor between multiple feedbacks. Skipping empty msgs in logical order, call-ID pairing is checked and illegal positions are rejected before writing. Empty `tool_calls` (null/`[]`) do not count as an outstanding request.
 
-## 编译、诊断与边界
+## Compilation, Diagnostics, and Boundaries
 
-ctx 结构和编译规则见 [CONTEXT.md](docs/CONTEXT.md)。stderr 任务头为 `[critical m, warning n]`；同一个重复编译问题只计一次。critical 阻止对应操作，warning 表示可以继续但存在忽略/降级，不替模型验证事实。原始文本保留，编译在内存中完成，不把时间前缀写回。
+The ctx structure and compilation rules are in [CONTEXT.md](docs/CONTEXT.md). The stderr task header is `[critical m, warning n]`; the same repeated compilation problem is counted once. `critical` blocks the corresponding operation, while `warning` means "can continue but something was ignored or degraded" and does not verify facts on the model's behalf. Raw text is preserved and compilation happens in memory; time prefixes are not written back.
 
-工具：read_file、list_directory、write_file、submit_answer，以及可用时的 Tavily web_search/fetch_url。写入只在 `sub_workspace/<sessionid>/`；无 shell，`exec_command` 在 TODO。只支持 UTF-8 文本，不含 PDF/Word 解析和通用多模态/Responses API。
+Tools: read_file, list_directory, write_file, submit_answer, plus Tavily web_search/fetch_url when available. Writes are confined to `sub_workspace/<sessionid>/`; there is no shell, and `exec_command` is in the TODO. Only UTF-8 text is supported, with no PDF/Word parsing and no general multimodal/Responses API.
 
-**这不是 OS 级 sandbox**，无法对抗同 UID 任意进程改文件；允许读取的文件会发送给模型服务。不要扩大 read_roots 到整个私人工作区，凭据目录和程序状态始终禁止工具读取。详细边界见 CONFIG.md。文件操作失败会区分 FILE_NOT_FOUND／PERMISSION_DENIED／IS_A_DIRECTORY／NOT_A_DIRECTORY 等，反馈包含请求路径和 errno；JSON 解析/类型错误才报告参数问题。
+**This is not an OS-level sandbox** and cannot defend against any process with the same UID modifying files; files allowed for reading will be sent to the model service. Do not widen read_roots to an entire private workspace, and credential directories and program state are always forbidden to the tools. File-operation failures are distinguished as FILE_NOT_FOUND / PERMISSION_DENIED / IS_A_DIRECTORY / NOT_A_DIRECTORY and so on, with the requested path and errno included in the feedback; only JSON parse/type errors are reported as argument problems.
 
-## 诊断与卸载
+## Diagnostics and Uninstall
 
 ```bash
 batchcode self-check
@@ -251,15 +253,15 @@ batchcode doctor --json
 bash uninstall.sh
 ```
 
-self-check 离线；doctor 显式测容器内 DNS，不发密钥/模型请求、不修 DNS。正常查询无诊断时 stderr 为空。卸载只移除这份安装的 PATH 入口和私有 venv，保留配置、密钥、历史、成果和源码；有活动命令则拒绝，不触碰系统 Python/coreutils/DNS。重新运行 install.sh 可重装。
+`self-check` is offline; `doctor` explicitly tests DNS inside the container and never sends keys or model requests and never fixes DNS. With a normal query and no diagnostics, stderr is empty. Uninstall removes only this installation's PATH entry and private venv, keeping configuration, keys, history, artifacts, and source; it refuses while commands are active and never touches system Python, coreutils, or DNS. Re-running `install.sh` reinstalls.
 
-## 开发与验证
+## Development and Verification
 
 ```bash
 python3 -m unittest discover -s tests -v
 python3 scripts/package.py
 ```
 
-[测试范围与限制](docs/TESTING.md) · [更新记录](CHANGELOG.md) · [AGENT.md](AGENT.md) · [TODO](docs/TODO.md)
+[Test scope and limitations](docs/TESTING.md) · [Changelog](CHANGELOG.md) · [AGENT.md](AGENT.md) · [TODO](docs/TODO.md)
 
-MIT License。发行包白名单构建，拒绝默认 profile 的非空 key；不包含运行历史、运行配置、venv、修 DNS 脚本或私人测试报告。
+MIT License. Release packages are built from a whitelist and refuse a non-empty key in the default profile; they contain no run history, run configuration, venv, DNS-fixing scripts, or private test reports.
